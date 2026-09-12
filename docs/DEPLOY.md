@@ -10,7 +10,8 @@ saya sendiri enam bulan lagi, dapat mengulang atau memperbaikinya tanpa menebak.
 | Host | `aipreneur-vps` (31.97.66.119) |
 | Domain | `audit.aipreneur.co.id` |
 | Direktori | `/var/www/siapai` |
-| Repo bare | `/var/git/siapai.git` |
+| Repo | GitHub `reyfuu/audit` (sumber kebenaran) |
+| Cadangan | repo bare `/var/git/siapai.git` di VPS, remote `cadangan` |
 | Service | `siapai.service` (systemd) |
 | Port aplikasi | 20140 (web), 20141 (API, hanya loopback) |
 | Basis data | PostgreSQL `siapai` |
@@ -26,17 +27,21 @@ in-process, sehingga port 20141 hanya ada supaya Elysia punya alamat internal.
 
 ```bash
 # Dari laptop
-git push vps master
+git push origin master          # GitHub, sumber kebenaran
+git push vps master             # opsional: cadangan di VPS
 
 # Di server
 ssh aipreneur-vps
 cd /var/www/siapai
-git pull origin master
+git pull origin master          # menarik dari GitHub
 bun install --frozen-lockfile
 bunx drizzle-kit migrate        # hanya bila ada migrasi baru
 systemctl restart siapai
 journalctl -u siapai -n 20 --no-pager
 ```
+
+Repo bare di VPS tetap dipertahankan sebagai remote `cadangan`. Gunanya bila
+GitHub tidak dapat dijangkau dan rilis tetap harus jalan.
 
 Migrasi dijalankan terpisah dan tidak otomatis saat start. Skema basis data
 adalah hal yang tidak dapat dibatalkan begitu saja, jadi keputusannya sebaiknya

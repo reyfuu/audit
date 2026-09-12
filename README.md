@@ -30,6 +30,8 @@ Owner    ──pindai QR / klik tautan──────┘
 **Backend: Elysia di atas Bun** (TypeBox schema-first, Eden untuk tipe end-to-end), PostgreSQL 16 + Drizzle ORM, Redis/BullMQ untuk job PDF & email, `qrcode` untuk QR server-side.
 **Frontend:** Next.js 15 + Tailwind + shadcn/ui. Rincian di [docs/TRD.md](docs/TRD.md) §2 dan ADR-007/008 di [DESIGN.md](DESIGN.md).
 
+Kode sumber: <https://github.com/reyfuu/audit>
+
 ## Demo Langsung
 **<https://audit.aipreneur.co.id>** — masuk dengan `admin@example.com` / `password123`.
 
