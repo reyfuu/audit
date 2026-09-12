@@ -21,6 +21,7 @@ export const NAV: NavItem[] = [
   { href: '/app/undangan', label: 'Undangan', icon: '✉' },
   { href: '/app/perusahaan', label: 'Perusahaan', icon: '🏢' },
   { href: '/app/tinjauan', label: 'Tinjauan AI', icon: '✦' },
+  { href: '/app/akun', label: 'Akun & tim', icon: '☰' },
 ]
 
 function head(title: string): string {

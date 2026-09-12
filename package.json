@@ -13,7 +13,7 @@
     "demo": "bun packages/scoring/demo.ts",
     "verify": "bun run typecheck && bun run validate:docs && bun run trace && bun test packages apps && bun run verify:readme",
     "test:api": "bun test apps/api",
-    "dev": "bun tools/dev-server.ts",
+    "dev": "bun apps/web/demo/lokal.ts",
     "check:visual": "bun apps/web/checks/visual.ts",
     "verify:full": "bun run verify && bun run check:visual",
     "trace": "python3 tools/traceability.py",

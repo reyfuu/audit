@@ -218,8 +218,20 @@ check('Login membawa auditor ke dashboard',
 await p4.screenshot({ path: '/tmp/siapai-10-masuk.png', fullPage: true })
 
 const sidebarItems = await p4.locator('.side a.nav').count()
-check('Sidebar navigasi tampil di dashboard', sidebarItems >= 4,
+check('Sidebar navigasi tampil di dashboard', sidebarItems >= 5,
   `${sidebarItems} item navigasi`)
+
+// Halaman akun adalah jalan keluar dari undangan tim; pastikan benar-benar ada.
+await p4.goto(`${WEB_BASE}/app/akun`, { waitUntil: 'networkidle' })
+check('Halaman akun menyediakan penetapan kata sandi',
+  await p4.locator('#new').isVisible(), 'formulir kata sandi tampil')
+await p4.screenshot({ path: '/tmp/siapai-11-akun.png', fullPage: true })
+
+const kodePage = await desktop.newPage()
+await kodePage.goto(`${WEB_BASE}/masuk/kode`, { waitUntil: 'networkidle' })
+check('Jalur masuk dengan kode tersedia untuk anggota yang baru diundang',
+  await kodePage.locator('#email').isVisible(), 'formulir kode tampil')
+await kodePage.close()
 
 await p4.goto(`${WEB_BASE}/app/undangan`, { waitUntil: 'networkidle' })
 await p4.screenshot({ path: '/tmp/siapai-7-dashboard.png', fullPage: true })

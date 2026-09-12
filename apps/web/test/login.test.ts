@@ -173,10 +173,10 @@ describe('FR-29 navigasi sidebar', () => {
   it('setiap halaman dashboard memuat sidebar dengan tujuan yang sama', async () => {
     const t = await setup()
     const cookie = t.cookieDari(await t.post('/masuk', { email: 'd@x.id', password: SANDI }))
-    for (const path of ['/app', '/app/undangan', '/app/perusahaan', '/app/tinjauan']) {
+    for (const path of ['/app', '/app/undangan', '/app/perusahaan', '/app/tinjauan', '/app/akun']) {
       const page = await (await t.get(path, cookie)).text()
       expect(page).toContain('class="side"')
-      for (const label of ['Ringkasan', 'Undangan', 'Perusahaan', 'Tinjauan AI']) {
+      for (const label of ['Ringkasan', 'Undangan', 'Perusahaan', 'Tinjauan AI', 'Akun &amp; tim']) {
         expect(page).toContain(label)
       }
     }

@@ -39,7 +39,7 @@ itu jujur, sehingga status tidak pernah dilaporkan lebih baik dari kenyataan.
 | `packages/scoring` | Mesin skoring: 7 dimensi, hard gate, rekomendasi, DSL visibilitas, kuesioner v1 | Berjalan, 92 uji |
 | `packages/ai` | Klien 9router + tinjauan AI atas kualitas jawaban | Berjalan, 14 uji |
 | `apps/api` | Perusahaan klien, undangan + QR, jalur responden bertoken | Berjalan, 138 uji |
-| `apps/web` | Form responden mobile-first + dashboard auditor bersidebar (masuk, undangan, QR, status, tinjauan AI) | Berjalan, 72 uji |
+| `apps/web` | Form responden mobile-first + dashboard auditor bersidebar (masuk, undangan, QR, status, tinjauan AI, akun & tim) | Berjalan, 81 uji |
 | `apps/api/src/db` | Skema Drizzle + repo PostgreSQL, migrasi siap pakai | Berjalan, 16 uji kontrak |
 | `apps/api` auth | Login email+kata sandi (dan OTP), JWT 15 menit, refresh rotatif, undangan tim | Berjalan, 44 uji |
 | `apps/api` laporan | Ekspor PDF & tautan bagikan read-only | Berjalan, 19 uji |
@@ -82,6 +82,8 @@ AI_API_KEY=sk-xxx bun run demo:lokal      # aktifkan tinjauan AI
 - Refresh token **rotatif sekali pakai**. Pemakaian ulang dianggap indikasi
   token dicuri, sehingga seluruh keluarga sesi dicabut sekaligus.
 - Publik tidak bisa mendaftar sendiri; hanya email yang diundang `auditor_admin`.
+- Anggota tim yang baru diundang belum punya kata sandi, sehingga ia masuk lewat
+  kode sekali pakai di `/masuk/kode` lalu menetapkan kata sandinya di halaman akun.
 - Respons permintaan OTP identik untuk email terdaftar maupun tidak, agar tidak
   menjadi orakel daftar auditor.
 - Token pintasan `Bearer user:<id>` hanya hidup bila `ALLOW_DEV_TOKENS=1`, dan
@@ -118,6 +120,7 @@ lalu mencetak semua tautan yang dibutuhkan.
 | `http://localhost:3000/app/undangan` | Daftar undangan dengan pencarian dan saringan status |
 | `http://localhost:3000/app/perusahaan` | Daftar perusahaan klien dan penambahannya |
 | `http://localhost:3000/app/tinjauan` | Tinjauan AI, termasuk tinjauan massal |
+| `http://localhost:3000/app/akun` | Kata sandi sendiri dan undangan anggota tim |
 | Tautan "COBA ISI FORM SENDIRI" | Form kosong siap diisi dari awal |
 | Tautan "LAPORAN" | Contoh laporan yang sudah jadi |
 
@@ -155,7 +158,7 @@ bun run verify:pg     # semua di atas, ditambah uji terhadap PostgreSQL nyata
 bun run verify:all    # SEMUA loop termasuk pemeriksaan visual dan spike (lambat)
 bun run check:visual  # verifikasi di viewport iPhone sungguhan (Playwright)
 bun run demo          # cetak skor 3 profil bisnis contoh ke terminal
-bun run dev           # API + form saja, tanpa dashboard
+bun run dev           # sama dengan demo:lokal
 ```
 
 ## Model Kesiapan
@@ -198,8 +201,8 @@ bun run test     # semua uji termasuk spike Elysia
 | Mesin skoring & rekomendasi | `bun test packages/scoring` | 92/92 lulus |
 | Klien model & tinjauan AI | `bun test packages/ai` | 14/14 lulus |
 | Alur undangan, QR, dan pengisian | `bun test apps/api` | 138/138 lulus |
-| Form web, login, dan dashboard bersidebar | `bun test apps/web` | 72/72 lulus |
-| Tampilan di iPhone + dashboard + laporan bagikan | `bun run check:visual` | 28/28 lulus |
+| Form web, login, akun tim, dan dashboard bersidebar | `bun test apps/web` | 81/81 lulus |
+| Tampilan di iPhone + dashboard + laporan bagikan | `bun run check:visual` | 30/30 lulus |
 | Autentikasi & skenario serangan | `bun test apps/api/test/auth.test.ts` | 44/44 lulus |
 | Tautan bagikan & ekspor PDF | `bun test apps/api/test/report.test.ts` | 19/19 lulus |
 | Tinjauan AI & kepemilikan data | `bun test apps/api/test/ai-review.test.ts` | 13/13 lulus |

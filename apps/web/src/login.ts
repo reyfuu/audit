@@ -33,8 +33,10 @@ export function loginPage(d: { error?: string; email?: string } = {}): string {
     <button class="btn btn-primary" type="submit" style="width:100%">Masuk</button>
   </form>
   <p class="muted" style="margin-top:16px">
-    Belum punya akun? Akun auditor dibuat lewat undangan dari admin tim Anda.
+    Baru diundang dan belum punya kata sandi?
+    <a href="/masuk/kode">Masuk dengan kode lewat email</a>.
   </p>
+  <p class="muted">Akun auditor hanya dibuat lewat undangan admin tim Anda.</p>
 </div>`)
 }
 

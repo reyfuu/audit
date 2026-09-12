@@ -5,6 +5,7 @@
  * persis sama; perbedaan hanya pada cara memanggil API.
  */
 import { Elysia } from 'elysia'
+import { akunModule } from './akun'
 import { auditorModule } from './auditor'
 import type { RawApi } from './auth-guard'
 import { loginModule } from './login'
@@ -22,6 +23,7 @@ export function createWebApp({ raw, publicBase }: WebAppDeps) {
     // Akar mengarah ke dashboard; guard sesi yang memutuskan perlu masuk atau tidak.
     .get('/', () => redirect('/app'))
     .use(loginModule({ raw, publicBase }))
+    .use(akunModule({ raw, publicBase }))
     .use(auditorModule({ raw, publicBase }))
     .use(createWeb({ api: (path, init) => raw(path, init) }))
 }
