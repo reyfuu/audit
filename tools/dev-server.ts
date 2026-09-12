@@ -19,10 +19,10 @@ createWeb({
 }).listen(WEB_PORT)
 
 // ── Data contoh
-const auditor = repo.createAuditor({
+const auditor = await repo.createAuditor({
   email: 'dimas@siapai.id', name: 'Dimas Auditor', role: 'auditor',
 })
-const company = repo.createCompany({
+const company = await repo.createCompany({
   owner_auditor_id: auditor.id,
   name: 'PT Maju Jaya Retail',
   industry: 'retail_ecommerce',

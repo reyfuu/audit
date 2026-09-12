@@ -10,10 +10,10 @@ import { Elysia } from 'elysia'
 
 const BASE = 'http://localhost:3000'
 
-function setup() {
+async function setup() {
   const { app: apiApp, repo } = createApp({ baseUrl: BASE })
-  const auditor = repo.createAuditor({ email: 'd@x.id', name: 'Dimas', role: 'auditor_admin' })
-  const lain = repo.createAuditor({ email: 'o@x.id', name: 'Other', role: 'auditor' })
+  const auditor = await repo.createAuditor({ email: 'd@x.id', name: 'Dimas', role: 'auditor_admin' })
+  const lain = await repo.createAuditor({ email: 'o@x.id', name: 'Other', role: 'auditor' })
 
   const asAuditor = (id: string) => (path: string, init: RequestInit = {}) =>
     apiApp.handle(new Request(`http://localhost:3001${path}`, {
@@ -55,7 +55,7 @@ function nilaiTertinggi(q: {
   }
 }
 
-async function tambahPerusahaan(t: ReturnType<typeof setup>, name = 'PT Coba') {
+async function tambahPerusahaan(t: Awaited<ReturnType<typeof setup>>, name = 'PT Coba') {
   await t.post('/app/perusahaan', { name, industry: 'retail_ecommerce', employee_band: '50_99' })
   const { items } = await (await t.api('/companies')).json() as { items: { id: string; name: string }[] }
   return items.find((c) => c.name === name)!
@@ -63,20 +63,20 @@ async function tambahPerusahaan(t: ReturnType<typeof setup>, name = 'PT Coba') {
 
 describe('FR-29 dashboard auditor', () => {
   it('menampilkan pesan kosong yang jelas saat belum ada undangan', async () => {
-    const t = setup()
+    const t = await setup()
     const page = await (await t.get('/app')).text()
     expect(page).toContain('Belum ada undangan')
   })
 
   it('perusahaan yang ditambahkan muncul di pilihan penerbitan', async () => {
-    const t = setup()
+    const t = await setup()
     await tambahPerusahaan(t, 'PT Sinar Abadi')
     const page = await (await t.get('/app')).text()
     expect(page).toContain('PT Sinar Abadi')
   })
 
   it('menerbitkan undangan mengarahkan ke halaman detail berisi QR', async () => {
-    const t = setup()
+    const t = await setup()
     const c = await tambahPerusahaan(t)
     const res = await t.post('/app/undangan', { company_id: c.id, recipient_name: 'Pak Budi' })
     expect(res.status).toBe(303)
@@ -86,7 +86,7 @@ describe('FR-29 dashboard auditor', () => {
   })
 
   it('status dan progres tampil di daftar', async () => {
-    const t = setup()
+    const t = await setup()
     const c = await tambahPerusahaan(t)
     await t.post('/app/undangan', { company_id: c.id, recipient_name: 'Bu Sari' })
     const page = await (await t.get('/app')).text()
@@ -96,7 +96,7 @@ describe('FR-29 dashboard auditor', () => {
   })
 
   it('status berubah mengikuti aksi responden', async () => {
-    const t = setup()
+    const t = await setup()
     const c = await tambahPerusahaan(t)
     const res = await t.post('/app/undangan', { company_id: c.id })
     const detail = await (await t.get(res.headers.get('location')!)).text()
@@ -117,7 +117,7 @@ describe('FR-29 dashboard auditor', () => {
 
 describe('FR-24 QR di dashboard', () => {
   it('endpoint QR dashboard mengembalikan PNG sungguhan', async () => {
-    const t = setup()
+    const t = await setup()
     const c = await tambahPerusahaan(t)
     const res = await t.post('/app/undangan', { company_id: c.id })
     const id = res.headers.get('location')!.split('/').pop()!
@@ -130,7 +130,7 @@ describe('FR-24 QR di dashboard', () => {
   })
 
   it('QR punya teks alternatif yang menyebut nama perusahaan', async () => {
-    const t = setup()
+    const t = await setup()
     const c = await tambahPerusahaan(t, 'PT Alt Teks')
     const res = await t.post('/app/undangan', { company_id: c.id })
     const detail = await (await t.get(res.headers.get('location')!)).text()
@@ -138,7 +138,7 @@ describe('FR-24 QR di dashboard', () => {
   })
 
   it('QR dashboard tidak boleh di-cache', async () => {
-    const t = setup()
+    const t = await setup()
     const c = await tambahPerusahaan(t)
     const res = await t.post('/app/undangan', { company_id: c.id })
     const id = res.headers.get('location')!.split('/').pop()!
@@ -149,7 +149,7 @@ describe('FR-24 QR di dashboard', () => {
 
 describe('auditor dapat menyalin kembali tautan undangan', () => {
   it('halaman detail menampilkan tautan, bukan memaksa terbitkan ulang', async () => {
-    const t = setup()
+    const t = await setup()
     const c = await tambahPerusahaan(t)
     const res = await t.post('/app/undangan', { company_id: c.id })
     const detail = await (await t.get(res.headers.get('location')!)).text()
@@ -157,7 +157,7 @@ describe('auditor dapat menyalin kembali tautan undangan', () => {
   })
 
   it('tautan yang ditampilkan benar-benar membuka form', async () => {
-    const t = setup()
+    const t = await setup()
     const c = await tambahPerusahaan(t, 'PT Tautan Sahih')
     const res = await t.post('/app/undangan', { company_id: c.id })
     const detail = await (await t.get(res.headers.get('location')!)).text()
@@ -167,7 +167,7 @@ describe('auditor dapat menyalin kembali tautan undangan', () => {
   })
 
   it('undangan yang dicabut tidak lagi menampilkan tautan', async () => {
-    const t = setup()
+    const t = await setup()
     const c = await tambahPerusahaan(t)
     const res = await t.post('/app/undangan', { company_id: c.id })
     const id = res.headers.get('location')!.split('/').pop()!
@@ -180,7 +180,7 @@ describe('auditor dapat menyalin kembali tautan undangan', () => {
 
 describe('FR-27 terbitkan ulang dari dashboard', () => {
   it('menghasilkan token baru dan mematikan yang lama', async () => {
-    const t = setup()
+    const t = await setup()
     const c = await tambahPerusahaan(t)
     const res = await t.post('/app/undangan', { company_id: c.id })
     const id = res.headers.get('location')!.split('/').pop()!
@@ -200,7 +200,7 @@ describe('FR-27 terbitkan ulang dari dashboard', () => {
 
 describe('FR-23 AC4 satu undangan aktif per perusahaan', () => {
   it('penerbitan kedua diarahkan ke undangan yang sedang berjalan, bukan buntu', async () => {
-    const t = setup()
+    const t = await setup()
     const c = await tambahPerusahaan(t)
     const pertama = await t.post('/app/undangan', { company_id: c.id })
     const kedua = await t.post('/app/undangan', { company_id: c.id })
@@ -211,7 +211,7 @@ describe('FR-23 AC4 satu undangan aktif per perusahaan', () => {
 
 describe('isolasi antar auditor', () => {
   it('dashboard auditor lain kosong dan tidak dapat membuka undangan orang lain', async () => {
-    const t = setup()
+    const t = await setup()
     const c = await tambahPerusahaan(t)
     const res = await t.post('/app/undangan', { company_id: c.id })
     const id = res.headers.get('location')!.split('/').pop()!
@@ -237,7 +237,7 @@ describe('isolasi antar auditor', () => {
 
 describe('auditor dapat membuka laporan setelah responden selesai', () => {
   it('menampilkan tautan laporan begitu status menjadi Selesai', async () => {
-    const t = setup()
+    const t = await setup()
     const c = await tambahPerusahaan(t, 'PT Sudah Selesai')
     const res = await t.post('/app/undangan', { company_id: c.id })
     const id = res.headers.get('location')!.split('/').pop()!
@@ -291,7 +291,7 @@ describe('auditor dapat membuka laporan setelah responden selesai', () => {
 
 describe('label dalam bahasa manusia', () => {
   it('pilihan industri memakai label, bukan nilai enum mentah', async () => {
-    const t = setup()
+    const t = await setup()
     const page = await (await t.get('/app')).text()
     expect(page).toContain('Retail &amp; e-commerce')
     expect(page).toContain('Makanan &amp; minuman')
@@ -300,7 +300,7 @@ describe('label dalam bahasa manusia', () => {
   })
 
   it('pilihan jumlah karyawan terbaca manusia', async () => {
-    const t = setup()
+    const t = await setup()
     const page = await (await t.get('/app')).text()
     expect(page).toContain('50–99 orang')
     expect(page).toContain('1000 orang atau lebih')
@@ -310,8 +310,8 @@ describe('label dalam bahasa manusia', () => {
 
 describe('keamanan output dashboard', () => {
   it('nama perusahaan berisi HTML di-escape', async () => {
-    const t = setup()
-    const c = t.repo.createCompany({
+    const t = await setup()
+    const c = await t.repo.createCompany({
       owner_auditor_id: t.auditor.id, name: '<img src=x onerror=alert(1)>',
       industry: 'fnb', employee_band: '10_49', country: 'ID',
     })

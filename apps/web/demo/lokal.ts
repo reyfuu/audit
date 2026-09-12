@@ -9,6 +9,7 @@
  */
 import { QUESTIONNAIRE_V1 as QN, type Question } from '@siapai/scoring'
 import { createApp } from '../../api/src/app'
+import { createStorage } from '../../api/src/db'
 import { createWeb } from '../src/web'
 import { auditorModule } from '../src/auditor'
 import { Elysia } from 'elysia'
@@ -17,15 +18,27 @@ const API_PORT = Number(process.env.API_PORT ?? 3001)
 const WEB_PORT = Number(process.env.PORT ?? 3000)
 const WEB_BASE = process.env.PUBLIC_BASE_URL ?? `http://localhost:${WEB_PORT}`
 
-const { app: api, repo } = createApp({ baseUrl: WEB_BASE })
+// Postgres bila DATABASE_URL ada, selain itu memori.
+const storage = createStorage()
+const { app: api, repo } = createApp({ repo: storage.repo, baseUrl: WEB_BASE })
 api.listen(API_PORT)
 
-// ── Akun demo
-const auditor = repo.createAuditor({
-  email: 'auditor@demo.id',
-  name: 'Dimas Auditor',
-  role: 'auditor_admin',
-})
+// ── Akun demo; dipakai ulang bila sudah ada agar restart tidak menggandakan.
+const auditor = await ambilAtauBuatAuditor()
+
+async function ambilAtauBuatAuditor() {
+  const email = 'auditor@demo.id'
+  if (storage.kind === 'postgres') {
+    const { db, client } = await import('../../api/src/db/pg-repo')
+      .then(async (m) => m.createDb(process.env.DATABASE_URL!, { max: 1 }))
+    const s = await import('../../api/src/db/schema')
+    const { eq } = await import('drizzle-orm')
+    const [ada] = await db.select().from(s.auditors).where(eq(s.auditors.email, email))
+    await client.end()
+    if (ada) return { id: ada.id, email: ada.email, name: ada.name, role: ada.role }
+  }
+  return repo.createAuditor({ email, name: 'Dimas Auditor', role: 'auditor_admin' })
+}
 
 /** Pemanggil API untuk dashboard; identitas auditor demo disuntikkan di sini. */
 const callApi = (path: string, init: RequestInit = {}) =>
@@ -131,11 +144,11 @@ const mk = (name: string, industry: string, band: string) =>
   })
 
 // 1. Belum diisi sama sekali: untuk dicoba sendiri dari HP.
-const baru = mk('PT Maju Jaya Retail', 'retail_ecommerce', '50_99')
+const baru = await mk('PT Maju Jaya Retail', 'retail_ecommerce', '50_99')
 const invBaru = await issue(baru.id, 'Pak Budi')
 
 // 2. Sedang diisi separuh: memperlihatkan status IN_PROGRESS di dashboard.
-const separuh = mk('CV Sinar Terang Logistik', 'logistics', '10_49')
+const separuh = await mk('CV Sinar Terang Logistik', 'logistics', '10_49')
 const invSeparuh = await issue(separuh.id, 'Bu Sari')
 {
   const s = await (await callPublic(`/f/${invSeparuh.token}/next`)).json()
@@ -148,7 +161,7 @@ const invSeparuh = await issue(separuh.id, 'Bu Sari')
 }
 
 // 3. Sudah selesai dengan kondisi lemah: laporannya langsung dapat dilihat.
-const selesai = mk('Toko Berkah Sentosa', 'fnb', '10_49')
+const selesai = await mk('Toko Berkah Sentosa', 'fnb', '10_49')
 const invSelesai = await issue(selesai.id, 'Pak Hendra')
 await isiPenuh(invSelesai.token, 'rintisan')
 const hasil = await (await callPublic(`/f/${invSelesai.token}/submit`, { method: 'POST' })).json()
@@ -186,7 +199,9 @@ ${garis}
     3. Pastikan HP satu jaringan Wi-Fi dengan laptop, lalu jalankan ulang dengan:
        PUBLIC_BASE_URL=http://<IP-laptop>:${WEB_PORT} bun run demo:lokal
 
-  Data disimpan di memori: menghentikan proses akan menghapus semuanya.
+  Penyimpanan: ${storage.kind === 'postgres'
+    ? 'PostgreSQL — data bertahan setelah proses dihentikan.'
+    : 'memori — data hilang saat proses dihentikan.\n                Untuk persisten: DATABASE_URL=postgres://localhost:5432/siapai_dev bun run demo:lokal'}
 
   Ctrl+C untuk berhenti.
 ${garis}

@@ -10,8 +10,8 @@ export function companyModule({ repo }: { repo: Repo }) {
     .use(authGuard)
     .post(
       '/',
-      ({ body, user, status }) => {
-        const row = repo.createCompany({
+      async ({ body, user, status }) => {
+        const row = await repo.createCompany({
           owner_auditor_id: user!.id,
           name: body.name,
           industry: body.industry,
@@ -30,7 +30,7 @@ export function companyModule({ repo }: { repo: Repo }) {
     )
     .get(
       '/',
-      ({ user }) => ({ items: repo.listCompanies(user!.id) }),
+      async ({ user }) => ({ items: await repo.listCompanies(user!.id) }),
       {
         response: { 200: t.Object({ items: t.Array(S.Company) }), 401: S.ErrorEnvelope },
         detail: { tags: ['Companies'], summary: 'Daftar perusahaan klien milik auditor' },
@@ -38,9 +38,9 @@ export function companyModule({ repo }: { repo: Repo }) {
     )
     .get(
       '/:id',
-      ({ params, user, status }) => {
+      async ({ params, user, status }) => {
         // FR-06: milik auditor lain dianggap tidak ada, bukan terlarang.
-        const c = repo.getCompany(params.id, user!.id)
+        const c = await repo.getCompany(params.id, user!.id)
         if (!c) return status(404, err('NOT_FOUND', 'Perusahaan tidak ditemukan'))
         return c
       },

@@ -22,8 +22,8 @@ const web = createWeb({
 })
 web.listen(WEB_PORT)
 
-const auditor = repo.createAuditor({ email: 'd@x.id', name: 'Dimas Auditor', role: 'auditor' })
-const company = repo.createCompany({
+const auditor = await repo.createAuditor({ email: 'd@x.id', name: 'Dimas Auditor', role: 'auditor' })
+const company = await repo.createCompany({
   owner_auditor_id: auditor.id, name: 'PT Maju Jaya Retail',
   industry: 'retail_ecommerce', employee_band: '50_99', country: 'ID',
 })
@@ -145,10 +145,10 @@ const inv2 = await (await api.handle(new Request(`http://localhost:${API_PORT}/i
   method: 'POST',
   headers: { 'content-type': 'application/json', authorization: `Bearer user:${auditor.id}` },
   body: JSON.stringify({
-    company_id: repo.createCompany({
+    company_id: (await repo.createCompany({
       owner_auditor_id: auditor.id, name: 'CV Tanpa JS',
       industry: 'fnb', employee_band: '10_49', country: 'ID',
-    }).id,
+    })).id,
   }),
 }))).json() as { token: string }
 

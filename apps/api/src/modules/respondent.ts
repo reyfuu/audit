@@ -31,12 +31,12 @@ export function respondentModule({ repo, now = () => new Date() }: RespondentDep
    * Mengembalikan null untuk token tidak dikenal, dicabut, atau kedaluwarsa,
    * sehingga pemanggil selalu membalas 404 netral (FR-25 AC3).
    */
-  function resolve(token: string): { inv: InvitationRow; a: AssessmentRow } | null {
-    const inv = repo.findByTokenHash(hashToken(token))
+  async function resolve(token: string): Promise<{ inv: InvitationRow; a: AssessmentRow } | null> {
+    const inv = await repo.findByTokenHash(hashToken(token))
     if (!inv) return null
     const st = effectiveStatus(inv, now())
     if (st === 'REVOKED' || st === 'EXPIRED') return null
-    const a = repo.getAssessment(inv.assessment_id)
+    const a = await repo.getAssessment(inv.assessment_id)
     return a ? { inv, a } : null
   }
 
@@ -44,11 +44,11 @@ export function respondentModule({ repo, now = () => new Date() }: RespondentDep
     err('INVITATION_INVALID', 'Tautan ini sudah tidak berlaku. Hubungi auditor Anda untuk tautan baru.')
 
   /** Menaikkan status undangan tanpa pernah menurunkannya. */
-  function advance(inv: InvitationRow, to: InvitationRow['status']) {
+  async function advance(inv: InvitationRow, to: InvitationRow['status']) {
     const order = ['SENT', 'OPENED', 'IN_PROGRESS', 'SUBMITTED', 'SCORED']
     if (order.indexOf(to) > order.indexOf(inv.status)) {
       inv.status = to
-      repo.saveInvitation(inv)
+      await repo.saveInvitation(inv)
     }
   }
 
@@ -61,18 +61,18 @@ export function respondentModule({ repo, now = () => new Date() }: RespondentDep
     // ── FR-25 halaman sambutan
     .get(
       '/:token',
-      ({ params, status }) => {
-        const r = resolve(params.token)
+      async ({ params, status }) => {
+        const r = await resolve(params.token)
         if (!r) return status(404, invalid())
         const { inv, a } = r
 
         // FR-25 AC2: pembukaan pertama menandai OPENED.
         if (inv.status === 'SENT') {
           inv.opened_at = now().toISOString()
-          advance(inv, 'OPENED')
+          await advance(inv, 'OPENED')
         }
-        const company = repo.getCompanyOfInvitation(inv)
-        const auditor = company ? repo.getAuditor(company.owner_auditor_id) : undefined
+        const company = await repo.getCompanyOfInvitation(inv)
+        const auditor = company ? await repo.getAuditor(company.owner_auditor_id) : undefined
         const p = progressOf(a)
         return {
           company_name: company?.name ?? '',
@@ -96,8 +96,8 @@ export function respondentModule({ repo, now = () => new Date() }: RespondentDep
     // ── FR-08 seksi berikutnya
     .get(
       '/:token/next',
-      ({ params, query, status }) => {
-        const r = resolve(params.token)
+      async ({ params, query, status }) => {
+        const r = await resolve(params.token)
         if (!r) return status(404, invalid())
         const { a } = r
 
@@ -154,8 +154,8 @@ export function respondentModule({ repo, now = () => new Date() }: RespondentDep
     // ── FR-09 autosave
     .patch(
       '/:token/answers',
-      ({ params, body, status }) => {
-        const r = resolve(params.token)
+      async ({ params, body, status }) => {
+        const r = await resolve(params.token)
         if (!r) return status(404, invalid())
         const { inv, a } = r
         if (!FILLABLE.has(effectiveStatus(inv, now()))) {
@@ -199,15 +199,15 @@ export function respondentModule({ repo, now = () => new Date() }: RespondentDep
           })
         }
         a.server_revision += 1
-        repo.saveAssessment(a)
-        advance(inv, 'IN_PROGRESS')
+        await repo.saveAssessment(a)
+        await advance(inv, 'IN_PROGRESS')
 
         const after = new Set(visibleQuestionsOf(a).map((q) => q.code))
         const newly_visible = [...after].filter((c) => !before.has(c)).sort()
         const newly_hidden = [...before].filter((c) => !after.has(c)).sort()
         // Jawaban yang menjadi tidak relevan dibuang agar tidak ikut terskor.
         for (const c of newly_hidden) a.answers.delete(c)
-        if (newly_hidden.length) repo.saveAssessment(a)
+        if (newly_hidden.length) await repo.saveAssessment(a)
 
         return {
           saved: body.answers.length,
@@ -229,8 +229,8 @@ export function respondentModule({ repo, now = () => new Date() }: RespondentDep
     // ── FR-11 review sebelum kirim
     .get(
       '/:token/review',
-      ({ params, status }) => {
-        const r = resolve(params.token)
+      async ({ params, status }) => {
+        const r = await resolve(params.token)
         if (!r) return status(404, invalid())
         const { a } = r
         return {
@@ -256,8 +256,8 @@ export function respondentModule({ repo, now = () => new Date() }: RespondentDep
     // ── FR-12 kirim & skoring
     .post(
       '/:token/submit',
-      ({ params, status }) => {
-        const r = resolve(params.token)
+      async ({ params, status }) => {
+        const r = await resolve(params.token)
         if (!r) return status(404, invalid())
         const { inv, a } = r
         if (a.status !== 'IN_PROGRESS') {
@@ -276,10 +276,10 @@ export function respondentModule({ repo, now = () => new Date() }: RespondentDep
         a.status = 'SCORED'
         a.submitted_at = at
         a.score_snapshot = result
-        repo.saveAssessment(a)
+        await repo.saveAssessment(a)
         inv.submitted_at = at
         inv.status = 'SCORED'
-        repo.saveInvitation(inv)
+        await repo.saveInvitation(inv)
 
         return toResultDto(a.id, result, at)
       },
@@ -294,8 +294,8 @@ export function respondentModule({ repo, now = () => new Date() }: RespondentDep
     // ── FR-16 hasil, terbuka penuh (FR-30)
     .get(
       '/:token/result',
-      ({ params, status }) => {
-        const r = resolve(params.token)
+      async ({ params, status }) => {
+        const r = await resolve(params.token)
         if (!r) return status(404, invalid())
         const { a } = r
         if (a.status !== 'SCORED' || !a.score_snapshot) {

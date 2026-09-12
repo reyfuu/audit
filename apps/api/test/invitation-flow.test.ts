@@ -11,10 +11,10 @@ import { createApp } from '../src/app'
 
 const BASE = 'http://localhost:3001'
 
-function setup(now: () => Date = () => new Date()) {
+async function setup(now: () => Date = () => new Date()) {
   const { app, repo } = createApp({ baseUrl: BASE, now })
-  const auditor = repo.createAuditor({ email: 'dimas@audit.id', name: 'Dimas', role: 'auditor' })
-  const lain = repo.createAuditor({ email: 'other@audit.id', name: 'Other', role: 'auditor' })
+  const auditor = await repo.createAuditor({ email: 'dimas@audit.id', name: 'Dimas', role: 'auditor' })
+  const lain = await repo.createAuditor({ email: 'other@audit.id', name: 'Other', role: 'auditor' })
   const H = (id = auditor.id) => ({
     'content-type': 'application/json',
     authorization: `Bearer user:${id}`,
@@ -25,7 +25,7 @@ function setup(now: () => Date = () => new Date()) {
   return { app, repo, auditor, lain, H, call }
 }
 
-async function createCompany(t: ReturnType<typeof setup>, name = 'PT Maju Jaya') {
+async function createCompany(t: Awaited<ReturnType<typeof setup>>, name = 'PT Maju Jaya') {
   const r = await t.call('/companies', {
     method: 'POST', headers: t.H(),
     body: JSON.stringify({ name, industry: 'retail_ecommerce', employee_band: '50_99' }),
@@ -34,7 +34,7 @@ async function createCompany(t: ReturnType<typeof setup>, name = 'PT Maju Jaya')
   return r.json() as Promise<{ id: string; name: string }>
 }
 
-async function issueInvitation(t: ReturnType<typeof setup>, companyId: string) {
+async function issueInvitation(t: Awaited<ReturnType<typeof setup>>, companyId: string) {
   const r = await t.call('/invitations', {
     method: 'POST', headers: t.H(),
     body: JSON.stringify({ company_id: companyId, recipient_name: 'Pak Budi' }),
@@ -74,7 +74,7 @@ function bestValue(q: Question) {
 }
 
 /** Mengisi form sampai tuntas lewat jalur responden, meniru klien sungguhan. */
-async function fillForm(t: ReturnType<typeof setup>, token: string) {
+async function fillForm(t: Awaited<ReturnType<typeof setup>>, token: string) {
   for (let guard = 0; guard < 30; guard++) {
     const next = await (await t.call(`/f/${token}/next`)).json()
     const unanswered = next.questions.filter(
@@ -109,7 +109,7 @@ async function fillForm(t: ReturnType<typeof setup>, token: string) {
 // ────────────────────────────────────────────────────────────────
 describe('FR-23 terbitkan undangan', () => {
   it('BA1: auditor memperoleh tautan dan kedua format QR', async () => {
-    const t = setup()
+    const t = await setup()
     const c = await createCompany(t)
     const { status, body } = await issueInvitation(t, c.id)
     expect(status).toBe(201)
@@ -121,26 +121,26 @@ describe('FR-23 terbitkan undangan', () => {
   })
 
   it('AC3: assessment dibuat otomatis dengan versi terkunci', async () => {
-    const t = setup()
+    const t = await setup()
     const c = await createCompany(t)
     const { body } = await issueInvitation(t, c.id)
-    const a = t.repo.getAssessment(body.assessment_id)
+    const a = await t.repo.getAssessment(body.assessment_id)
     expect(a?.status).toBe('IN_PROGRESS')
     expect(a?.questionnaire_version).toBe(QN.version)
     expect(a?.rubric_version).toBe(QN.rubric_version)
   })
 
   it('AC1: token mentah tidak tersimpan apa adanya di basis data', async () => {
-    const t = setup()
+    const t = await setup()
     const c = await createCompany(t)
     const { body } = await issueInvitation(t, c.id)
-    const row = t.repo.getInvitation(body.id)!
+    const row = (await t.repo.getInvitation(body.id))!
     expect(row.token_hash).not.toBe(body.token)
     expect(row.token_sealed).not.toContain(body.token)
   })
 
   it('AC4: menerbitkan dua kali untuk perusahaan sama ditolak 409', async () => {
-    const t = setup()
+    const t = await setup()
     const c = await createCompany(t)
     await issueInvitation(t, c.id)
     const second = await issueInvitation(t, c.id)
@@ -150,7 +150,7 @@ describe('FR-23 terbitkan undangan', () => {
   })
 
   it('auditor tidak dapat menerbitkan untuk perusahaan auditor lain', async () => {
-    const t = setup()
+    const t = await setup()
     const c = await createCompany(t)
     const r = await t.call('/invitations', {
       method: 'POST', headers: t.H(t.lain.id),
@@ -160,7 +160,7 @@ describe('FR-23 terbitkan undangan', () => {
   })
 
   it('tanpa token auditor ditolak 401', async () => {
-    const t = setup()
+    const t = await setup()
     const r = await t.call('/invitations', {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ company_id: 'x' }),
@@ -171,7 +171,7 @@ describe('FR-23 terbitkan undangan', () => {
 
 describe('FR-24 QR code', () => {
   it('AC1: isi QR PNG sama persis dengan invitation_url', async () => {
-    const t = setup()
+    const t = await setup()
     const c = await createCompany(t)
     const { body } = await issueInvitation(t, c.id)
 
@@ -187,7 +187,7 @@ describe('FR-24 QR code', () => {
   })
 
   it('AC1: QR SVG juga memuat URL yang sama', async () => {
-    const t = setup()
+    const t = await setup()
     const c = await createCompany(t)
     const { body } = await issueInvitation(t, c.id)
     const res = await t.call(`/invitations/${body.id}/qr.svg`, { headers: t.H() })
@@ -197,7 +197,7 @@ describe('FR-24 QR code', () => {
   })
 
   it('AC2: ukuran default memenuhi minimum 256 px', async () => {
-    const t = setup()
+    const t = await setup()
     const c = await createCompany(t)
     const { body } = await issueInvitation(t, c.id)
     const res = await t.call(`/invitations/${body.id}/qr.png`, { headers: t.H() })
@@ -206,7 +206,7 @@ describe('FR-24 QR code', () => {
   })
 
   it('AC2: ukuran di bawah 256 ditolak validasi', async () => {
-    const t = setup()
+    const t = await setup()
     const c = await createCompany(t)
     const { body } = await issueInvitation(t, c.id)
     const res = await t.call(`/invitations/${body.id}/qr.png?size=64`, { headers: t.H() })
@@ -214,21 +214,21 @@ describe('FR-24 QR code', () => {
   })
 
   it('AC4: QR tidak dapat diambil tanpa autentikasi auditor', async () => {
-    const t = setup()
+    const t = await setup()
     const c = await createCompany(t)
     const { body } = await issueInvitation(t, c.id)
     expect((await t.call(`/invitations/${body.id}/qr.png`)).status).toBe(401)
   })
 
   it('AC4: auditor lain tidak dapat mengambil QR milik orang lain', async () => {
-    const t = setup()
+    const t = await setup()
     const c = await createCompany(t)
     const { body } = await issueInvitation(t, c.id)
     expect((await t.call(`/invitations/${body.id}/qr.png`, { headers: t.H(t.lain.id) })).status).toBe(404)
   })
 
   it('QR tidak boleh di-cache oleh proxy', async () => {
-    const t = setup()
+    const t = await setup()
     const c = await createCompany(t)
     const { body } = await issueInvitation(t, c.id)
     const res = await t.call(`/invitations/${body.id}/qr.png`, { headers: t.H() })
@@ -238,7 +238,7 @@ describe('FR-24 QR code', () => {
 
 describe('FR-25 owner membuka form dari QR', () => {
   it('BA2: token dari hasil pindai QR membuka form perusahaan yang benar', async () => {
-    const t = setup()
+    const t = await setup()
     const c = await createCompany(t, 'CV Sinar Terang')
     const { body } = await issueInvitation(t, c.id)
 
@@ -257,25 +257,25 @@ describe('FR-25 owner membuka form dari QR', () => {
   })
 
   it('AC4: responden tidak perlu akun, tanpa header Authorization', async () => {
-    const t = setup()
+    const t = await setup()
     const c = await createCompany(t)
     const { body } = await issueInvitation(t, c.id)
     expect((await t.call(`/f/${body.token}`)).status).toBe(200)
   })
 
   it('AC2: pembukaan pertama mengubah status SENT menjadi OPENED', async () => {
-    const t = setup()
+    const t = await setup()
     const c = await createCompany(t)
     const { body } = await issueInvitation(t, c.id)
-    expect(t.repo.getInvitation(body.id)!.status).toBe('SENT')
+    expect((await t.repo.getInvitation(body.id))!.status).toBe('SENT')
     await t.call(`/f/${body.token}`)
-    const after = t.repo.getInvitation(body.id)!
+    const after = (await t.repo.getInvitation(body.id))!
     expect(after.status).toBe('OPENED')
     expect(after.opened_at).not.toBeNull()
   })
 
   it('AC3: token tidak dikenal mengembalikan 404 netral', async () => {
-    const t = setup()
+    const t = await setup()
     const res = await t.call('/f/token-palsu-yang-tidak-pernah-ada')
     expect(res.status).toBe(404)
     const b = await res.json()
@@ -284,7 +284,7 @@ describe('FR-25 owner membuka form dari QR', () => {
   })
 
   it('AC5: halaman form tidak diindeks mesin pencari', async () => {
-    const t = setup()
+    const t = await setup()
     const c = await createCompany(t)
     const { body } = await issueInvitation(t, c.id)
     const res = await t.call(`/f/${body.token}`)
@@ -294,7 +294,7 @@ describe('FR-25 owner membuka form dari QR', () => {
 
 describe('FR-26 melanjutkan lintas perangkat', () => {
   it('BA5: mulai di satu perangkat, lanjutkan di perangkat lain', async () => {
-    const t = setup()
+    const t = await setup()
     const c = await createCompany(t)
     const { body } = await issueInvitation(t, c.id)
 
@@ -318,7 +318,7 @@ describe('FR-26 melanjutkan lintas perangkat', () => {
 
 describe('FR-08 pengambilan seksi bertahap', () => {
   it('AC1: hanya mengembalikan pertanyaan yang lolos aturan visibilitas', async () => {
-    const t = setup()
+    const t = await setup()
     const c = await createCompany(t)
     const { body } = await issueInvitation(t, c.id)
 
@@ -340,7 +340,7 @@ describe('FR-08 pengambilan seksi bertahap', () => {
   })
 
   it('AC2: respons menyertakan progres yang konsisten', async () => {
-    const t = setup()
+    const t = await setup()
     const c = await createCompany(t)
     const { body } = await issueInvitation(t, c.id)
     const s = await (await t.call(`/f/${body.token}/next`)).json()
@@ -351,7 +351,7 @@ describe('FR-08 pengambilan seksi bertahap', () => {
   })
 
   it('menunjuk seksi pertama yang belum lengkap, bukan selalu seksi pertama', async () => {
-    const t = setup()
+    const t = await setup()
     const c = await createCompany(t)
     const { body } = await issueInvitation(t, c.id)
     const pertama = await (await t.call(`/f/${body.token}/next`)).json()
@@ -371,7 +371,7 @@ describe('FR-08 pengambilan seksi bertahap', () => {
   })
 
   it('seksi yang diminta secara eksplisit dihormati', async () => {
-    const t = setup()
+    const t = await setup()
     const c = await createCompany(t)
     const { body } = await issueInvitation(t, c.id)
     const s = await (await t.call(`/f/${body.token}/next?section=GOV`)).json()
@@ -380,14 +380,14 @@ describe('FR-08 pengambilan seksi bertahap', () => {
   })
 
   it('seksi yang tidak ada mengembalikan 404', async () => {
-    const t = setup()
+    const t = await setup()
     const c = await createCompany(t)
     const { body } = await issueInvitation(t, c.id)
     expect((await t.call(`/f/${body.token}/next?section=XXX`)).status).toBe(404)
   })
 
   it('jawaban tersimpan ikut dikembalikan agar UI bisa menampilkannya kembali', async () => {
-    const t = setup()
+    const t = await setup()
     const c = await createCompany(t)
     const { body } = await issueInvitation(t, c.id)
     await t.call(`/f/${body.token}/answers`, {
@@ -402,7 +402,7 @@ describe('FR-08 pengambilan seksi bertahap', () => {
 
 describe('FR-15 benchmark', () => {
   it('AC2: menandai benchmark tidak tersedia selama sampel belum cukup', async () => {
-    const t = setup()
+    const t = await setup()
     const c = await createCompany(t)
     const { body } = await issueInvitation(t, c.id)
     await fillForm(t, body.token)
@@ -415,7 +415,7 @@ describe('FR-15 benchmark', () => {
 
 describe('FR-09 autosave lewat jalur responden', () => {
   it('idempoten: menjawab ulang pertanyaan sama tidak menggandakan progres', async () => {
-    const t = setup()
+    const t = await setup()
     const c = await createCompany(t)
     const { body } = await issueInvitation(t, c.id)
     const payload = {
@@ -429,7 +429,7 @@ describe('FR-09 autosave lewat jalur responden', () => {
   })
 
   it('branching: menjawab ORG-02 dengan perusahaan besar memunculkan PPL-07', async () => {
-    const t = setup()
+    const t = await setup()
     const c = await createCompany(t)
     const { body } = await issueInvitation(t, c.id)
     const res = await (await t.call(`/f/${body.token}/answers`, {
@@ -440,7 +440,7 @@ describe('FR-09 autosave lewat jalur responden', () => {
   })
 
   it('branching: mengubah ke perusahaan kecil menyembunyikan PPL-07 lagi', async () => {
-    const t = setup()
+    const t = await setup()
     const c = await createCompany(t)
     const { body } = await issueInvitation(t, c.id)
     const h = { 'content-type': 'application/json' }
@@ -456,7 +456,7 @@ describe('FR-09 autosave lewat jalur responden', () => {
   })
 
   it('menolak jawaban untuk pertanyaan yang sedang tidak tampil', async () => {
-    const t = setup()
+    const t = await setup()
     const c = await createCompany(t)
     const { body } = await issueInvitation(t, c.id)
     await t.call(`/f/${body.token}/answers`, {
@@ -472,7 +472,7 @@ describe('FR-09 autosave lewat jalur responden', () => {
   })
 
   it('menolak bentuk nilai yang salah tipe', async () => {
-    const t = setup()
+    const t = await setup()
     const c = await createCompany(t)
     const { body } = await issueInvitation(t, c.id)
     const res = await t.call(`/f/${body.token}/answers`, {
@@ -486,7 +486,7 @@ describe('FR-09 autosave lewat jalur responden', () => {
 
 describe('FR-12 & FR-16 kirim dan lihat hasil', () => {
   it('submit dengan jawaban kurang ditolak 422 beserta daftarnya', async () => {
-    const t = setup()
+    const t = await setup()
     const c = await createCompany(t)
     const { body } = await issueInvitation(t, c.id)
     const res = await t.call(`/f/${body.token}/submit`, { method: 'POST' })
@@ -497,7 +497,7 @@ describe('FR-12 & FR-16 kirim dan lihat hasil', () => {
   })
 
   it('alur penuh: isi semua, kirim, dapat verdict dan rekomendasi', async () => {
-    const t = setup()
+    const t = await setup()
     const c = await createCompany(t)
     const { body } = await issueInvitation(t, c.id)
 
@@ -519,7 +519,7 @@ describe('FR-12 & FR-16 kirim dan lihat hasil', () => {
   })
 
   it('BA6/PA4: seluruh laporan terbuka, tidak ada 402 di mana pun', async () => {
-    const t = setup()
+    const t = await setup()
     const c = await createCompany(t)
     const { body } = await issueInvitation(t, c.id)
     await fillForm(t, body.token)
@@ -533,7 +533,7 @@ describe('FR-12 & FR-16 kirim dan lihat hasil', () => {
   })
 
   it('setelah dikirim, jawaban tidak dapat diubah lagi', async () => {
-    const t = setup()
+    const t = await setup()
     const c = await createCompany(t)
     const { body } = await issueInvitation(t, c.id)
     await fillForm(t, body.token)
@@ -546,7 +546,7 @@ describe('FR-12 & FR-16 kirim dan lihat hasil', () => {
   })
 
   it('submit dua kali ditolak', async () => {
-    const t = setup()
+    const t = await setup()
     const c = await createCompany(t)
     const { body } = await issueInvitation(t, c.id)
     await fillForm(t, body.token)
@@ -555,7 +555,7 @@ describe('FR-12 & FR-16 kirim dan lihat hasil', () => {
   })
 
   it('hasil belum tersedia sebelum dikirim', async () => {
-    const t = setup()
+    const t = await setup()
     const c = await createCompany(t)
     const { body } = await issueInvitation(t, c.id)
     expect((await t.call(`/f/${body.token}/result`)).status).toBe(409)
@@ -564,7 +564,7 @@ describe('FR-12 & FR-16 kirim dan lihat hasil', () => {
 
 describe('FR-27 cabut & terbitkan ulang', () => {
   it('AC1: undangan yang dicabut langsung tidak dapat dipakai', async () => {
-    const t = setup()
+    const t = await setup()
     const c = await createCompany(t)
     const { body } = await issueInvitation(t, c.id)
     expect((await t.call(`/f/${body.token}`)).status).toBe(200)
@@ -578,7 +578,7 @@ describe('FR-27 cabut & terbitkan ulang', () => {
   })
 
   it('AC2: terbitkan ulang memberi token baru tetapi jawaban dipertahankan', async () => {
-    const t = setup()
+    const t = await setup()
     const c = await createCompany(t)
     const { body } = await issueInvitation(t, c.id)
     await t.call(`/f/${body.token}/answers`, {
@@ -603,7 +603,7 @@ describe('FR-27 cabut & terbitkan ulang', () => {
 describe('FR-28 kedaluwarsa', () => {
   it('AC1: setelah masa berlaku lewat, form ditolak', async () => {
     let sekarang = new Date('2026-01-01T00:00:00Z')
-    const t = setup(() => sekarang)
+    const t = await setup(() => sekarang)
     const c = await createCompany(t)
     const { body } = await issueInvitation(t, c.id)
     expect((await t.call(`/f/${body.token}`)).status).toBe(200)
@@ -617,7 +617,7 @@ describe('FR-28 kedaluwarsa', () => {
 
   it('undangan kedaluwarsa membuka jalan untuk menerbitkan yang baru', async () => {
     let sekarang = new Date('2026-01-01T00:00:00Z')
-    const t = setup(() => sekarang)
+    const t = await setup(() => sekarang)
     const c = await createCompany(t)
     await issueInvitation(t, c.id)
     sekarang = new Date('2026-02-01T00:00:00Z')
@@ -628,7 +628,7 @@ describe('FR-28 kedaluwarsa', () => {
 
 describe('FR-29 dashboard auditor', () => {
   it('status dan progres mengikuti aksi responden', async () => {
-    const t = setup()
+    const t = await setup()
     const c = await createCompany(t)
     const { body } = await issueInvitation(t, c.id)
 
@@ -654,7 +654,7 @@ describe('FR-29 dashboard auditor', () => {
   })
 
   it('auditor hanya melihat undangan miliknya sendiri', async () => {
-    const t = setup()
+    const t = await setup()
     const c = await createCompany(t)
     await issueInvitation(t, c.id)
     const lain = await (await t.call('/invitations', { headers: t.H(t.lain.id) })).json()

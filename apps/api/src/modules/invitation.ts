@@ -29,9 +29,9 @@ export function effectiveStatus(inv: InvitationRow, now: Date): InvitationRow['s
 }
 
 export function invitationModule({ repo, baseUrl, now = () => new Date() }: InvitationDeps) {
-  const toDto = (inv: InvitationRow) => {
-    const company = repo.getCompanyOfInvitation(inv)
-    const assessment = repo.getAssessment(inv.assessment_id)
+  const toDto = async (inv: InvitationRow) => {
+    const company = await repo.getCompanyOfInvitation(inv)
+    const assessment = await repo.getAssessment(inv.assessment_id)
     return {
       id: inv.id,
       company_id: inv.company_id,
@@ -52,7 +52,7 @@ export function invitationModule({ repo, baseUrl, now = () => new Date() }: Invi
   }
 
   /** Membuat baris undangan baru untuk assessment yang sudah ada. */
-  function issue(
+  async function issue(
     companyId: string,
     assessmentId: string,
     expiresInDays: number,
@@ -76,12 +76,12 @@ export function invitationModule({ repo, baseUrl, now = () => new Date() }: Invi
       revoked_at: null,
       reminder_count: 0,
     }
-    repo.createInvitation(row)
+    await repo.createInvitation(row)
     return { row, token }
   }
 
-  const withSecrets = (row: InvitationRow, token: string) => ({
-    ...toDto(row),
+  const withSecrets = async (row: InvitationRow, token: string) => ({
+    ...(await toDto(row)),
     // FR-23 AC1: token mentah hanya muncul di sini, sekali.
     token,
     invitation_url: invitationUrl(baseUrl, token),
@@ -95,12 +95,12 @@ export function invitationModule({ repo, baseUrl, now = () => new Date() }: Invi
     // ── FR-23 terbitkan undangan
     .post(
       '/',
-      ({ body, user, status }) => {
-        const company = repo.getCompany(body.company_id, user!.id)
+      async ({ body, user, status }) => {
+        const company = await repo.getCompany(body.company_id, user!.id)
         // 404 alih-alih 403: jangan bocorkan perusahaan milik auditor lain.
         if (!company) return status(404, err('NOT_FOUND', 'Perusahaan tidak ditemukan'))
 
-        const active = repo.findActiveByCompany(company.id)
+        const active = await repo.findActiveByCompany(company.id)
         if (active && effectiveStatus(active, now()) !== 'EXPIRED') {
           return status(409, err('CONFLICT', 'Masih ada undangan aktif untuk perusahaan ini', {
             invitation_id: active.id,
@@ -108,7 +108,7 @@ export function invitationModule({ repo, baseUrl, now = () => new Date() }: Invi
         }
 
         // FR-23 AC3: assessment dibuat bersamaan, versi dikunci saat ini.
-        const assessment = repo.createAssessment({
+        const assessment = await repo.createAssessment({
           id: crypto.randomUUID(),
           company_id: company.id,
           status: 'IN_PROGRESS',
@@ -118,11 +118,11 @@ export function invitationModule({ repo, baseUrl, now = () => new Date() }: Invi
           submitted_at: null,
         })
 
-        const { row, token } = issue(company.id, assessment.id, body.expires_in_days ?? 30, {
+        const { row, token } = await issue(company.id, assessment.id, body.expires_in_days ?? 30, {
           ...(body.recipient_name !== undefined ? { name: body.recipient_name } : {}),
           ...(body.recipient_email !== undefined ? { email: body.recipient_email } : {}),
         })
-        return status(201, withSecrets(row, token))
+        return status(201, await withSecrets(row, token))
       },
       {
         body: t.Object({
@@ -142,7 +142,9 @@ export function invitationModule({ repo, baseUrl, now = () => new Date() }: Invi
     // ── FR-29 dashboard auditor
     .get(
       '/',
-      ({ user }) => ({ items: repo.listInvitations(user!.id).map(toDto) }),
+      async ({ user }) => ({
+        items: await Promise.all((await repo.listInvitations(user!.id)).map(toDto)),
+      }),
       {
         response: { 200: t.Object({ items: t.Array(S.Invitation) }), 401: S.ErrorEnvelope },
         detail: { tags: ['Invitations'], summary: 'Daftar undangan beserta status' },
@@ -151,8 +153,8 @@ export function invitationModule({ repo, baseUrl, now = () => new Date() }: Invi
 
     .get(
       '/:id',
-      ({ params, user, status }) => {
-        const inv = ownedInvitation(repo, params.id, user!.id)
+      async ({ params, user, status }) => {
+        const inv = await ownedInvitation(repo, params.id, user!.id)
         if (!inv) return status(404, err('NOT_FOUND', 'Undangan tidak ditemukan'))
         // Auditor pemilik boleh melihat kembali tautannya: ia memang berhak
         // membagikannya, dan memaksanya menerbitkan ulang hanya untuk menyalin
@@ -160,7 +162,7 @@ export function invitationModule({ repo, baseUrl, now = () => new Date() }: Invi
         const st = effectiveStatus(inv, now())
         const bisaDibagikan = st !== 'REVOKED' && st !== 'EXPIRED'
         return {
-          ...toDto(inv),
+          ...(await toDto(inv)),
           ...(bisaDibagikan
             ? { invitation_url: invitationUrl(baseUrl, openToken(inv.token_sealed)) }
             : {}),
@@ -176,12 +178,12 @@ export function invitationModule({ repo, baseUrl, now = () => new Date() }: Invi
     // ── FR-27 AC1 cabut
     .delete(
       '/:id',
-      ({ params, user, status }) => {
-        const inv = ownedInvitation(repo, params.id, user!.id)
+      async ({ params, user, status }) => {
+        const inv = await ownedInvitation(repo, params.id, user!.id)
         if (!inv) return status(404, err('NOT_FOUND', 'Undangan tidak ditemukan'))
         inv.status = 'REVOKED'
         inv.revoked_at = now().toISOString()
-        repo.saveInvitation(inv)
+        await repo.saveInvitation(inv)
         return status(204, undefined)
       },
       {
@@ -194,20 +196,20 @@ export function invitationModule({ repo, baseUrl, now = () => new Date() }: Invi
     // ── FR-27 AC2 terbitkan ulang; jawaban dipertahankan
     .post(
       '/:id/reissue',
-      ({ params, user, status }) => {
-        const old = ownedInvitation(repo, params.id, user!.id)
+      async ({ params, user, status }) => {
+        const old = await ownedInvitation(repo, params.id, user!.id)
         if (!old) return status(404, err('NOT_FOUND', 'Undangan tidak ditemukan'))
 
         old.status = 'REVOKED'
         old.revoked_at = now().toISOString()
-        repo.saveInvitation(old)
+        await repo.saveInvitation(old)
 
         // Assessment yang sama dipakai ulang, sehingga jawaban tidak hilang.
-        const { row, token } = issue(old.company_id, old.assessment_id, 30, {
+        const { row, token } = await issue(old.company_id, old.assessment_id, 30, {
           ...(old.recipient_name !== undefined ? { name: old.recipient_name } : {}),
           ...(old.recipient_email !== undefined ? { email: old.recipient_email } : {}),
         })
-        return status(201, withSecrets(row, token))
+        return status(201, await withSecrets(row, token))
       },
       {
         params: t.Object({ id: t.String() }),
@@ -220,7 +222,7 @@ export function invitationModule({ repo, baseUrl, now = () => new Date() }: Invi
     .get(
       '/:id/qr.png',
       async ({ params, query, user, status, set }) => {
-        const inv = ownedInvitation(repo, params.id, user!.id)
+        const inv = await ownedInvitation(repo, params.id, user!.id)
         if (!inv) return status(404, err('NOT_FOUND', 'Undangan tidak ditemukan'))
         // FR-24 AC1: isi QR HARUS sama persis dengan invitation_url.
         const url = invitationUrl(baseUrl, openToken(inv.token_sealed))
@@ -247,7 +249,7 @@ export function invitationModule({ repo, baseUrl, now = () => new Date() }: Invi
     .get(
       '/:id/qr.svg',
       async ({ params, user, status, set }) => {
-        const inv = ownedInvitation(repo, params.id, user!.id)
+        const inv = await ownedInvitation(repo, params.id, user!.id)
         if (!inv) return status(404, err('NOT_FOUND', 'Undangan tidak ditemukan'))
         const svg = await QRCode.toString(invitationUrl(baseUrl, openToken(inv.token_sealed)), {
           type: 'svg', errorCorrectionLevel: 'M', margin: 2,
@@ -263,8 +265,8 @@ export function invitationModule({ repo, baseUrl, now = () => new Date() }: Invi
     )
 }
 
-function ownedInvitation(repo: Repo, invitationId: string, auditorId: string) {
-  const inv = repo.getInvitation(invitationId)
+async function ownedInvitation(repo: Repo, invitationId: string, auditorId: string) {
+  const inv = await repo.getInvitation(invitationId)
   if (!inv) return undefined
-  return repo.getCompany(inv.company_id, auditorId) ? inv : undefined
+  return (await repo.getCompany(inv.company_id, auditorId)) ? inv : undefined
 }

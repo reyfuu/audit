@@ -79,31 +79,38 @@ export interface InvitationRow {
   reminder_count: number
 }
 
+/**
+ * Antarmuka penyimpanan.
+ *
+ * Seluruh operasi asinkron, termasuk pada implementasi memori, supaya
+ * penyimpanan nyata (Postgres, ADR-008) dapat dipasang tanpa mengubah modul
+ * HTTP sedikit pun.
+ */
 export interface Repo {
   // auditor
-  createAuditor(input: Omit<AuditorRow, 'id'>): AuditorRow
-  getAuditor(id: string): AuditorRow | undefined
+  createAuditor(input: Omit<AuditorRow, 'id'>): Promise<AuditorRow>
+  getAuditor(id: string): Promise<AuditorRow | undefined>
 
   // perusahaan klien
-  createCompany(input: Omit<CompanyRow, 'id' | 'created_at'>): CompanyRow
+  createCompany(input: Omit<CompanyRow, 'id' | 'created_at'>): Promise<CompanyRow>
   /** Perusahaan pemilik sebuah undangan, dipakai untuk menampilkan nama. */
-  getCompanyOfInvitation(inv: InvitationRow): CompanyRow | undefined
+  getCompanyOfInvitation(inv: InvitationRow): Promise<CompanyRow | undefined>
   /** Ber-scope auditor: perusahaan milik auditor lain dianggap tidak ada. */
-  getCompany(id: string, auditorId: string): CompanyRow | undefined
-  listCompanies(auditorId: string): CompanyRow[]
+  getCompany(id: string, auditorId: string): Promise<CompanyRow | undefined>
+  listCompanies(auditorId: string): Promise<CompanyRow[]>
 
   // assessment
-  createAssessment(input: Omit<AssessmentRow, 'answers' | 'server_revision'>): AssessmentRow
-  getAssessment(id: string): AssessmentRow | undefined
-  saveAssessment(row: AssessmentRow): void
+  createAssessment(input: Omit<AssessmentRow, 'answers' | 'server_revision'>): Promise<AssessmentRow>
+  getAssessment(id: string): Promise<AssessmentRow | undefined>
+  saveAssessment(row: AssessmentRow): Promise<void>
 
   // undangan
-  createInvitation(input: InvitationRow): InvitationRow
-  getInvitation(id: string): InvitationRow | undefined
-  findByTokenHash(hash: string): InvitationRow | undefined
-  findActiveByCompany(companyId: string): InvitationRow | undefined
-  listInvitations(auditorId: string): InvitationRow[]
-  saveInvitation(row: InvitationRow): void
+  createInvitation(input: InvitationRow): Promise<InvitationRow>
+  getInvitation(id: string): Promise<InvitationRow | undefined>
+  findByTokenHash(hash: string): Promise<InvitationRow | undefined>
+  findActiveByCompany(companyId: string): Promise<InvitationRow | undefined>
+  listInvitations(auditorId: string): Promise<InvitationRow[]>
+  saveInvitation(row: InvitationRow): Promise<void>
 }
 
 export function createMemoryRepo(): Repo {
@@ -117,54 +124,54 @@ export function createMemoryRepo(): Repo {
   const ACTIVE: readonly InvitationStatus[] = ['SENT', 'OPENED', 'IN_PROGRESS']
 
   return {
-    createAuditor(input) {
+    async createAuditor(input) {
       const row: AuditorRow = { ...input, id: crypto.randomUUID() }
       auditors.set(row.id, row)
       return row
     },
-    getAuditor: (id) => auditors.get(id),
+    async getAuditor(id) { return auditors.get(id) },
 
-    createCompany(input) {
+    async createCompany(input) {
       const row: CompanyRow = { ...input, id: crypto.randomUUID(), created_at: new Date().toISOString() }
       companies.set(row.id, row)
       return row
     },
-    getCompanyOfInvitation: (inv) => companies.get(inv.company_id),
-    getCompany(id, auditorId) {
+    async getCompanyOfInvitation(inv) { return companies.get(inv.company_id) },
+    async getCompany(id, auditorId) {
       const c = companies.get(id)
       return c && c.owner_auditor_id === auditorId ? c : undefined
     },
-    listCompanies(auditorId) {
+    async listCompanies(auditorId) {
       return [...companies.values()].filter((c) => c.owner_auditor_id === auditorId)
     },
 
-    createAssessment(input) {
+    async createAssessment(input) {
       const row: AssessmentRow = { ...input, answers: new Map(), server_revision: 0 }
       assessments.set(row.id, row)
       return row
     },
-    getAssessment: (id) => assessments.get(id),
-    saveAssessment(row) {
+    async getAssessment(id) { return assessments.get(id) },
+    async saveAssessment(row) {
       assessments.set(row.id, row)
     },
 
-    createInvitation(input) {
+    async createInvitation(input) {
       invitations.set(input.id, input)
       byTokenHash.set(input.token_hash, input.id)
       return input
     },
-    getInvitation: (id) => invitations.get(id),
-    findByTokenHash(hash) {
+    async getInvitation(id) { return invitations.get(id) },
+    async findByTokenHash(hash) {
       const id = byTokenHash.get(hash)
       return id ? invitations.get(id) : undefined
     },
-    findActiveByCompany(companyId) {
+    async findActiveByCompany(companyId) {
       for (const inv of invitations.values()) {
         if (inv.company_id === companyId && ACTIVE.includes(inv.status)) return inv
       }
       return undefined
     },
-    listInvitations(auditorId) {
+    async listInvitations(auditorId) {
       const mine = new Set(
         [...companies.values()].filter((c) => c.owner_auditor_id === auditorId).map((c) => c.id),
       )
@@ -172,7 +179,7 @@ export function createMemoryRepo(): Repo {
         .filter((i) => mine.has(i.company_id))
         .sort((a, b) => b.issued_at.localeCompare(a.issued_at))
     },
-    saveInvitation(row) {
+    async saveInvitation(row) {
       invitations.set(row.id, row)
       byTokenHash.set(row.token_hash, row.id)
     },

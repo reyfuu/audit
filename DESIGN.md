@@ -18,6 +18,8 @@
 | ADR-008 | Drizzle ORM menggantikan Prisma | Prisma, SQL mentah | Berjalan native di Bun tanpa engine biner, migrasi SQL eksplisit yang cocok dengan strategi expand-and-contract |
 | ADR-009 | Form responden server-rendered dengan progressive enhancement | SPA React/Next | Jalur masuk utama adalah pindai QR di HP, sering pada koneksi seluler buruk. SPA yang gagal dimuat mematikan satu-satunya kesempatan owner mengisi. Form HTML biasa tetap berfungsi tanpa JavaScript; JS hanya menambah autosave. Terverifikasi: halaman 8.7 KB dan alur penuh selesai dengan `javaScriptEnabled: false`. |
 | ADR-010 | Seksi profil `ORG` terpisah dari tujuh dimensi berskor | Menitipkan pertanyaan profil ke dimensi STR | Menitipkan membuat UI melabeli "Berapa jumlah karyawan" sebagai "Strategi & Kepemimpinan", yang menyesatkan responden. Ditemukan lewat pemeriksaan visual, bukan uji unit. |
+| ADR-011 | Antarmuka `Repo` asinkron sejak awal, termasuk implementasi memori | Antarmuka sinkron dengan pembungkus asinkron terpisah | Penyimpanan nyata selalu melakukan I/O. Menyeragamkan bentuknya membuat Postgres dapat dipasang tanpa mengubah satu baris pun di modul HTTP, dan uji kontrak yang sama dapat dijalankan terhadap kedua implementasi. |
+| ADR-012 | Uji kontrak penyimpanan dijalankan terhadap memori dan Postgres nyata | Hanya menguji memori, atau hanya Postgres | Menguji memori saja tidak membuktikan SQL benar; menguji Postgres saja membuat uji lambat dan menuntut basis data. Menjalankan suite yang sama pada keduanya menjamin perilakunya identik sekaligus menjaga uji cepat secara default. |
 
 ### A2. Mesin Skoring — alur
 ```mermaid

@@ -17,7 +17,12 @@
     "check:visual": "bun tools/visual-check.ts",
     "verify:full": "bun run verify && bun run check:visual",
     "trace": "python3 tools/traceability.py",
-    "demo:lokal": "bun apps/web/demo/lokal.ts"
+    "demo:lokal": "bun apps/web/demo/lokal.ts",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:setup": "createdb siapai_dev 2>/dev/null; DATABASE_URL=postgres://localhost:5432/siapai_dev drizzle-kit migrate",
+    "test:pg": "TEST_DATABASE_URL=postgres://localhost:5432/siapai_test bun test apps/api",
+    "verify:pg": "bun run verify && bun run test:pg"
   },
   "devDependencies": {
     "@types/pngjs": "^6.0.5",

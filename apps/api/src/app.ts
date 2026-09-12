@@ -10,6 +10,7 @@ import { respondentModule } from './modules/respondent'
 import { companyModule } from './modules/company'
 
 export interface AppDeps {
+  /** Penyimpanan; default in-memory. Pakai createPgRepo untuk Postgres. */
   repo?: Repo
   baseUrl?: string
   now?: () => Date

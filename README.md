@@ -39,6 +39,7 @@ itu jujur, sehingga status tidak pernah dilaporkan lebih baik dari kenyataan.
 | `packages/scoring` | Mesin skoring: 7 dimensi, hard gate, rekomendasi, DSL visibilitas, kuesioner v1 | Berjalan, 90 uji |
 | `apps/api` | Perusahaan klien, undangan + QR, jalur responden bertoken | Berjalan, 43 uji |
 | `apps/web` | Form responden mobile-first + dashboard auditor (undangan, QR, status) | Berjalan, 49 uji |
+| `apps/api/src/db` | Skema Drizzle + repo PostgreSQL, migrasi siap pakai | Berjalan, 35 uji |
 
 **Alur utama sudah utuh:** auditor menerbitkan undangan → QR/tautan → owner mengisi → skor dan rekomendasi keluar.
 
@@ -47,7 +48,6 @@ autentikasi auditor (FR-01..FR-04, saat ini memakai token pengembangan),
 hapus draft (FR-13), ekspor PDF (FR-17), tautan bagikan (FR-18),
 riwayat & tren (FR-19), CMS bank pertanyaan (FR-20..FR-22),
 dan benchmark industri sebagai endpoint tersendiri (FR-15 dasarnya sudah ada).
-Penyimpanan masih in-memory; Drizzle/Postgres (ADR-008) belum dipasang.
 
 ```bash
 python3 tools/traceability.py   # peta FRD -> implementasi -> uji
@@ -75,6 +75,18 @@ otomatis di dashboard, karena autentikasi nyata (FR-01..FR-04) belum dipasang.
 Tiga perusahaan contoh disiapkan pada kondisi berbeda: belum dibuka, sedang
 diisi separuh, dan sudah selesai beserta laporannya.
 
+### Dengan penyimpanan permanen
+Secara default demo memakai memori, sehingga datanya hilang saat proses berhenti.
+Untuk menyimpan permanen ke PostgreSQL:
+
+```bash
+bun run db:setup                                              # buat database & jalankan migrasi
+DATABASE_URL=postgres://localhost:5432/siapai_dev bun run demo:lokal
+```
+
+Jawaban owner, undangan, dan laporan akan bertahan meski proses dimatikan dan
+dijalankan ulang. Tautan serta QR yang sudah dibagikan tetap berlaku.
+
 ### Mencoba dari HP
 1. Buka halaman detail undangan di laptop, QR-nya langsung tampil.
 2. Pindai dengan kamera bawaan HP.
@@ -89,6 +101,7 @@ diisi separuh, dan sudah selesai beserta laporannya.
 ## Perintah Lain
 ```bash
 bun run verify        # typecheck + validator dokumen + keterlacakan + semua uji
+bun run verify:pg     # semua di atas, ditambah uji terhadap PostgreSQL nyata
 bun run check:visual  # verifikasi di viewport iPhone sungguhan (Playwright)
 bun run demo          # cetak skor 3 profil bisnis contoh ke terminal
 bun run dev           # API + form saja, tanpa dashboard
@@ -135,8 +148,14 @@ bun run test     # semua uji termasuk spike Elysia
 | Alur undangan, QR, dan pengisian | `bun test apps/api` | 43/43 lulus |
 | Form web & dashboard auditor | `bun test apps/web` | 49/49 lulus |
 | Tampilan di iPhone sungguhan | `bun run check:visual` | 17/17 lulus |
+| Kontrak penyimpanan (memori & Postgres) | `bun run test:pg` | 78/78 lulus |
 | Type safety (strict) | `bunx tsc --noEmit` | bersih |
 | Keterlacakan FRD → kode → uji | `python3 tools/traceability.py` | 19 siap, 11 ditunda, 0 bermasalah |
+
+Suite kontrak penyimpanan dijalankan terhadap implementasi memori **dan**
+PostgreSQL nyata, sehingga keduanya dijamin berperilaku identik. Uji persistensi
+memakai koneksi baru di tiap tahap untuk meniru server yang di-restart, dan
+membuktikan jawaban owner tidak hilang.
 
 Pemeriksaan visual menjalankan Chromium pada viewport iPhone 13 dan mengukur hal yang tidak dapat dibuktikan uji string: target sentuh terhitung ≥ 44px, tidak ada scroll horizontal, kontras 17.7:1, dan form benar-benar selesai dengan 43 ketukan. Alur juga diuji ulang dengan `javaScriptEnabled: false`.
 
