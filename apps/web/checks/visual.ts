@@ -221,6 +221,28 @@ const sidebarItems = await p4.locator('.side a.nav').count()
 check('Sidebar navigasi tampil di dashboard', sidebarItems >= 5,
   `${sidebarItems} item navigasi`)
 
+// Ikon harus benar-benar terender dengan ukuran nyata, bukan kotak kosong.
+const ikonBox = await p4.locator('.side svg.icon').evaluateAll((els) =>
+  els.map((e) => { const r = e.getBoundingClientRect(); return Math.min(r.width, r.height) }))
+check('Semua ikon sidebar terender dengan ukuran nyata',
+  ikonBox.length >= 5 && Math.min(...ikonBox) >= 16,
+  `${ikonBox.length} ikon, terkecil ${Math.round(Math.min(...ikonBox))}px`)
+
+// Ikon mengikuti warna keadaan aktif, sehingga halaman yang dibuka terbaca.
+const warnaAktif = await p4.evaluate(() => {
+  const aktif = document.querySelector('.side a.nav[aria-current="page"] .ic')
+  const diam = document.querySelector('.side a.nav:not([aria-current]) .ic')
+  return [getComputedStyle(aktif!).color, getComputedStyle(diam!).color]
+})
+check('Ikon halaman aktif berbeda warna dari yang tidak aktif',
+  warnaAktif[0] !== warnaAktif[1], `aktif ${warnaAktif[0]}, diam ${warnaAktif[1]}`)
+
+// Target sentuh item navigasi, diukur dari layout sungguhan.
+const navBox = await p4.locator('.side a.nav').evaluateAll((els) =>
+  els.map((e) => e.getBoundingClientRect().height))
+check('Target sentuh navigasi >= 44px', Math.min(...navBox) >= 44,
+  `terkecil ${Math.round(Math.min(...navBox))}px`)
+
 // Halaman akun adalah jalan keluar dari undangan tim; pastikan benar-benar ada.
 await p4.goto(`${WEB_BASE}/app/akun`, { waitUntil: 'networkidle' })
 check('Halaman akun menyediakan penetapan kata sandi',
@@ -234,6 +256,21 @@ check('Jalur masuk dengan kode tersedia untuk anggota yang baru diundang',
 await kodePage.close()
 
 await p4.goto(`${WEB_BASE}/app/undangan`, { waitUntil: 'networkidle' })
+
+// Tabel di ponsel: barisnya menjadi kartu, tanpa teks yang terpotong sempit.
+const hp = await browser.newContext({ ...devices['iPhone 13'] })
+await hp.addCookies(await desktop.cookies())
+const p6 = await hp.newPage()
+await p6.goto(`${WEB_BASE}/app/undangan`, { waitUntil: 'networkidle' })
+await p6.screenshot({ path: '/tmp/siapai-12-tabel-hp.png', fullPage: true })
+const kolomHp = await p6.evaluate(() =>
+  getComputedStyle(document.querySelector('.tbl td')!).display)
+check('Tabel berubah menjadi kartu di layar ponsel', kolomHp !== 'table-cell',
+  `display sel: ${kolomHp}`)
+check('Daftar undangan di ponsel tidak scroll horizontal',
+  await p6.evaluate(() => document.documentElement.scrollWidth) <= 391,
+  `konten ${await p6.evaluate(() => document.documentElement.scrollWidth)}px`)
+await p6.close()
 await p4.screenshot({ path: '/tmp/siapai-7-dashboard.png', fullPage: true })
 
 check('Dashboard menampilkan daftar undangan',

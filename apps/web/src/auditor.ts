@@ -10,6 +10,7 @@
  */
 import { Elysia, t } from 'elysia'
 import { sessionPlugin, type RawApi, type AuthedApi } from './auth-guard'
+import { ICONS } from './icons'
 import { esc, html, redirect, shell } from './shell'
 
 export interface AuditorDeps {
@@ -83,14 +84,14 @@ export function auditorModule({ raw, publicBase }: AuditorDeps) {
         body: `
 <div class="page-head"><h1>Ringkasan</h1>
   <span class="spacer"></span>
-  <a class="btn btn-primary btn-sm" href="/app/undangan"
-     style="line-height:44px;text-decoration:none;text-align:center">Terbitkan undangan</a>
+  <a class="btn btn-primary btn-sm btn-icon" href="/app/undangan"
+     style="text-decoration:none">${ICONS.tambah}Terbitkan undangan</a>
 </div>
 <div class="stats">
-  <div class="stat"><b>${invitations.length}</b><span>Total undangan</span></div>
-  <div class="stat"><b>${berjalan}</b><span>Sedang berjalan</span></div>
-  <div class="stat"><b>${belumDibuka}</b><span>Belum dibuka</span></div>
-  <div class="stat"><b>${selesai}</b><span>Laporan siap</span></div>
+  ${stat(ICONS.undangan, invitations.length, 'Total undangan')}
+  ${stat(ICONS.ulang, berjalan, 'Sedang berjalan')}
+  ${stat(ICONS.awas, belumDibuka, 'Belum dibuka', belumDibuka > 0 ? 'warn' : '')}
+  ${stat(ICONS.ok, selesai, 'Laporan siap', selesai > 0 ? 'ok' : '')}
 </div>
 
 ${macet.length ? `<div class="card">
@@ -99,7 +100,14 @@ ${macet.length ? `<div class="card">
   <table class="tbl"><tbody>
     ${macet.slice(0, 6).map((i) => `<tr>
       <td><a href="/app/undangan/${esc(i.id)}">${esc(i.company_name)}</a></td>
-      <td style="width:120px">${i.progress.answered}/${i.progress.total_visible}</td>
+      <td data-l="Progres" style="width:180px">
+        <span style="display:block">
+          ${i.progress.answered}/${i.progress.total_visible} terjawab
+          <div class="progress" style="margin-top:6px;width:120px">
+            <i style="width:${i.progress.percent}%"></i>
+          </div>
+        </span>
+      </td>
     </tr>`).join('')}
   </tbody></table>
 </div>` : ''}
@@ -155,7 +163,7 @@ ${macet.length ? `<div class="card">
     ${Object.entries(STATUS_LABEL).map(([v, l]) =>
       `<option value="${v}"${status === v ? ' selected' : ''}>${esc(l)}</option>`).join('')}
   </select>
-  <button class="btn btn-sm" type="submit">Saring</button>
+  <button class="btn btn-sm btn-icon" type="submit">${ICONS.cari}Saring</button>
 </form>
 
 <div class="card">
@@ -188,8 +196,8 @@ ${macet.length ? `<div class="card">
                    style="width:100%">
           </div>
         </div>
-        <button class="btn btn-primary btn-sm" type="submit" style="margin-top:14px">
-          Terbitkan undangan</button>
+        <button class="btn btn-primary btn-sm btn-icon" type="submit" style="margin-top:14px">
+          ${ICONS.tambah}Terbitkan undangan</button>
       </form>`}
 </div>`,
       }), 200, cookiesBaru)
@@ -227,7 +235,7 @@ ${macet.length ? `<div class="card">
 <form class="toolbar" method="get" action="/app/perusahaan">
   <input class="field" type="search" name="q" value="${esc(query.q ?? '')}"
          placeholder="Cari nama perusahaan" style="flex:1;min-width:200px">
-  <button class="btn btn-sm" type="submit">Cari</button>
+  <button class="btn btn-sm btn-icon" type="submit">${ICONS.cari}Cari</button>
 </form>
 
 <div class="card">
@@ -240,9 +248,9 @@ ${macet.length ? `<div class="card">
           const inv = undanganPer.get(c.id)
           return `<tr>
             <td><strong>${esc(c.name)}</strong></td>
-            <td>${esc(INDUSTRI_LABEL[c.industry] ?? c.industry)}</td>
-            <td>${esc(KARYAWAN_LABEL[c.employee_band] ?? c.employee_band)}</td>
-            <td>${inv
+            <td data-l="Industri">${esc(INDUSTRI_LABEL[c.industry] ?? c.industry)}</td>
+            <td data-l="Karyawan">${esc(KARYAWAN_LABEL[c.employee_band] ?? c.employee_band)}</td>
+            <td data-l="Undangan">${inv
               ? `<a href="/app/undangan/${esc(inv.id)}">
                    ${esc(STATUS_LABEL[inv.status] ?? inv.status)}</a>`
               : `<form method="post" action="/app/undangan" style="margin:0">
@@ -277,8 +285,8 @@ ${macet.length ? `<div class="card">
         </select>
       </div>
     </div>
-    <button class="btn btn-primary btn-sm" type="submit" style="margin-top:14px">
-      Tambah perusahaan</button>
+    <button class="btn btn-primary btn-sm btn-icon" type="submit" style="margin-top:14px">
+      ${ICONS.tambah}Tambah perusahaan</button>
   </form>
 </div>`,
       }), 200, cookiesBaru)
@@ -316,19 +324,19 @@ ${macet.length ? `<div class="card">
   Skor kesiapan tetap dihitung dari rubrik. AI hanya menilai kualitas jawaban:
   kontradiksi, klaim tanpa bukti, dan hal yang perlu dikonfirmasi auditor.</p>
 
-${query.gagal ? `<div class="banner banner-error">${esc(query.gagal)}</div>` : ''}
-${query.selesai ? `<div class="banner banner-ok">${esc(query.selesai)} assessment selesai ditinjau.${
-  query.sebagian ? ` ${esc(query.sebagian)} gagal dan dapat dicoba lagi.` : ''}</div>` : ''}
+${query.gagal ? banner('error', esc(query.gagal)) : ''}
+${query.selesai ? banner('ok', `${esc(query.selesai)} assessment selesai ditinjau.${
+  query.sebagian ? ` ${esc(query.sebagian)} gagal dan dapat dicoba lagi.` : ''}`) : ''}
 
 <div class="stats">
-  <div class="stat"><b>${selesai.length}</b>
-    <span>Laporan selesai${invitations.length > selesai.length
-      ? ` dari ${invitations.length} undangan` : ''}</span></div>
-  <div class="stat"><b>${sudah.length}</b><span>Sudah ditinjau</span></div>
-  <div class="stat"><b>${belum}</b><span>Menunggu tinjauan</span></div>
-  <div class="stat"><b>${sudah.filter((x) =>
-    x.review!.flags.some((f) => f.severity === 'high')).length}</b>
-    <span>Ada temuan berat</span></div>
+  ${stat(ICONS.ok, selesai.length, `Laporan selesai${invitations.length > selesai.length
+    ? ` dari ${invitations.length} undangan` : ''}`)}
+  ${stat(ICONS.tinjauan, sudah.length, 'Sudah ditinjau')}
+  ${stat(ICONS.ulang, belum, 'Menunggu tinjauan', belum > 0 ? 'warn' : '')}
+  ${(() => {
+    const berat = sudah.filter((x) => x.review!.flags.some((f) => f.severity === 'high')).length
+    return stat(ICONS.awas, berat, 'Ada temuan berat', berat > 0 ? 'warn' : '')
+  })()}
 </div>
 
 ${selesai.length === 0
@@ -351,9 +359,10 @@ ${selesai.length === 0
              lalu tekan tombol "Tinjau ulang".</p>`
         : ''}
       <form method="post" action="/app/tinjauan/jalankan" style="margin-top:12px">
-        <button class="btn btn-primary btn-sm" type="submit"
+        <button class="btn btn-primary btn-sm btn-icon" type="submit"
           ${belum === 0 ? 'disabled' : ''}>
-          ${belum === 0 ? 'Tidak ada yang perlu ditinjau' : `Tinjau ${belum} assessment`}</button>
+          ${ICONS.tinjauan}${belum === 0
+            ? 'Tidak ada yang perlu ditinjau' : `Tinjau ${belum} assessment`}</button>
       </form>
     </div>
 
@@ -366,14 +375,18 @@ ${selesai.length === 0
           : potongan.map(({ inv, review }) => `
             <tr>
               <td><strong>${esc(inv.company_name)}</strong></td>
-              <td>${review ? `${review.data_quality}/100` : '<span class="muted">—</span>'}</td>
-              <td>${review
+              <td data-l="Kualitas data">${review
+                ? `<strong>${review.data_quality}</strong><span class="muted">/100</span>`
+                : '<span class="muted">Belum dinilai</span>'}</td>
+              <td data-l="Temuan">${review
                 ? (review.flags.length === 0
                     ? '<span class="muted">Tidak ada temuan</span>'
-                    : review.flags.slice(0, 3).map((f) =>
-                        `<span class="sev sev-${esc(f.severity)}">${
-                          esc(SEV_LABEL[f.severity] ?? f.severity)}</span>`).join(' '))
-                : '<span class="muted">Belum ditinjau</span>'}</td>
+                    : review.flags.slice(0, 3).map((f) => sev(f.severity)).join(' '))
+                : `<form method="post" action="/app/undangan/${esc(inv.id)}/tinjau"
+                     style="margin:0">
+                     <button class="btn btn-sm btn-icon" type="submit">
+                       ${ICONS.tinjauan}Tinjau</button>
+                   </form>`}</td>
               <td><a href="/app/undangan/${esc(inv.id)}">Buka</a></td>
             </tr>`).join('')}</tbody>
       </table>
@@ -435,11 +448,10 @@ ${selesai.length === 0
         title: `Undangan ${inv.company_name}`, active: '/app/undangan',
         ...(me ? { email: me.email } : {}),
         body: `
-<p><a href="/app/undangan">← Kembali ke daftar</a></p>
+<p><a class="tautan-balik" href="/app/undangan">${ICONS.kembali}Kembali ke daftar</a></p>
 <div class="page-head"><h1>${esc(inv.company_name)}</h1></div>
-${query.gagal ? `<div class="banner banner-error">${esc(query.gagal)}</div>` : ''}
-<p><span class="pill" style="color:${STATUS_COLOR[inv.status]}">
-  ${esc(STATUS_LABEL[inv.status] ?? inv.status)}</span>
+${query.gagal ? banner('error', esc(query.gagal)) : ''}
+<p>${pill(inv.status)}
   <span class="muted"> · ${inv.progress.answered} dari ${inv.progress.total_visible} terjawab</span></p>
 
 <div class="grid grid-2">
@@ -459,7 +471,8 @@ ${query.gagal ? `<div class="banner banner-error">${esc(query.gagal)}</div>` : '
       : `<p class="muted">Tautan tidak tersedia untuk undangan ini.
            Terbitkan ulang untuk memperoleh tautan baru.</p>`}
     <form method="post" action="/app/undangan/${esc(inv.id)}/reissue" style="margin-top:16px">
-      <button class="btn btn-sm" type="submit">Terbitkan ulang token</button>
+      <button class="btn btn-sm btn-icon" type="submit">
+        ${ICONS.ulang}Terbitkan ulang token</button>
     </form>
     <p class="muted" style="margin-top:12px">
       Berlaku sampai ${esc(tanggal(inv.expires_at))}</p>
@@ -476,10 +489,11 @@ ${inv.status === 'SCORED'
                 style="line-height:44px;text-decoration:none;text-align:center">
                Lihat laporan</a>`
           : ''}
-        <a class="btn btn-sm" href="/app/undangan/${esc(inv.id)}/pdf"
-           style="line-height:44px;text-decoration:none;text-align:center">Unduh PDF</a>
+        <a class="btn btn-sm btn-icon" href="/app/undangan/${esc(inv.id)}/pdf"
+           style="text-decoration:none">${ICONS.unduh}Unduh PDF</a>
         <form method="post" action="/app/undangan/${esc(inv.id)}/bagikan" style="margin:0">
-          <button class="btn btn-sm" type="submit">Buat tautan bagikan</button>
+          <button class="btn btn-sm btn-icon" type="submit">
+            ${ICONS.bagikan}Buat tautan bagikan</button>
         </form>
       </div>
       ${bagikan.length
@@ -510,8 +524,7 @@ ${inv.status === 'SCORED'
               ? '<p class="muted">Tidak ada temuan yang perlu dikonfirmasi.</p>'
               : review.flags.map((f) => `
                 <div class="flag">
-                  <span class="sev sev-${esc(f.severity)}">${
-                    esc(SEV_LABEL[f.severity] ?? f.severity)}</span>
+                  ${sev(f.severity)}
                   ${f.question_codes.length
                     ? `<span class="q"> ${esc(f.question_codes.join(', '))}</span>` : ''}
                   <p style="margin:6px 0 4px">${esc(f.issue)}</p>
@@ -525,8 +538,8 @@ ${inv.status === 'SCORED'
          : `<p class="muted">Belum ditinjau. AI akan memeriksa konsistensi jawaban dan
               menyiapkan pertanyaan konfirmasi untuk Anda.</p>`}
        <form method="post" action="/app/undangan/${esc(inv.id)}/tinjau" style="margin-top:12px">
-         <button class="btn btn-sm" type="submit">
-           ${review ? 'Tinjau ulang' : 'Tinjau dengan AI'}</button>
+         <button class="btn btn-sm btn-icon" type="submit">
+           ${review ? ICONS.ulang : ICONS.tinjauan}${review ? 'Tinjau ulang' : 'Tinjau dengan AI'}</button>
        </form>
      </div>`
   : ''}`,
@@ -685,19 +698,52 @@ const daftarPerusahaan = async (api: AuthedApi): Promise<Company[]> => {
 
 // ── Potongan tampilan
 
+/**
+ * Lencana status undangan.
+ * Disertai titik berwarna agar status tetap dapat dibedakan bentuknya, tidak
+ * semata-mata bergantung pada warna teks.
+ */
+function pill(status: string): string {
+  return `<span class="pill" style="color:${STATUS_COLOR[status] ?? 'var(--muted)'}">
+    <span class="dot"></span>${esc(STATUS_LABEL[status] ?? status)}</span>`
+}
+
+/** Lencana tingkat temuan AI, dengan ikon pembeda selain warna. */
+function sev(tingkat: string): string {
+  const icon = tingkat === 'high' ? ICONS.awas : tingkat === 'medium' ? ICONS.cari : ICONS.ok
+  return `<span class="sev sev-${esc(tingkat)}">${icon}${
+    esc(SEV_LABEL[tingkat] ?? tingkat)}</span>`
+}
+
+/** Kartu statistik: angka besar, ikon, dan label yang menerangkan artinya. */
+function stat(icon: string, angka: number, label: string, nada = ''): string {
+  return `<div class="stat${nada ? ` stat-${nada}` : ''}">
+    <span class="ic">${icon}</span>
+    <span><b>${angka}</b><span>${label}</span></span>
+  </div>`
+}
+
+/** Banner berikon; pesan penting tidak boleh hanya dibedakan oleh warna. */
+function banner(jenis: 'ok' | 'warn' | 'error', isi: string): string {
+  const icon = jenis === 'ok' ? ICONS.ok : ICONS.awas
+  return `<div class="banner banner-${jenis}" role="${
+    jenis === 'error' ? 'alert' : 'status'}">${icon}<span>${isi}</span></div>`
+}
+
 function barisUndangan(i: Invitation): string {
   return `<tr>
     <td>
       <strong>${esc(i.company_name)}</strong><br>
       <span class="muted">${esc(i.recipient_name ?? 'Tanpa nama penerima')}</span>
     </td>
-    <td><span class="pill" style="color:${STATUS_COLOR[i.status]}">
-      ${esc(STATUS_LABEL[i.status] ?? i.status)}</span></td>
-    <td>
-      ${i.progress.answered}/${i.progress.total_visible}
-      <div class="progress" style="margin-top:6px;width:110px">
-        <i style="width:${i.progress.percent}%"></i>
-      </div>
+    <td data-l="Status">${pill(i.status)}</td>
+    <td data-l="Progres">
+      <span style="display:block">
+        ${i.progress.answered}/${i.progress.total_visible}
+        <div class="progress" style="margin-top:6px;width:110px">
+          <i style="width:${i.progress.percent}%"></i>
+        </div>
+      </span>
     </td>
     <td><a href="/app/undangan/${esc(i.id)}">Lihat QR</a></td>
   </tr>`

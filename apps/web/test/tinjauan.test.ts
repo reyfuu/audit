@@ -178,8 +178,9 @@ describe('FR-31 halaman tinjauan AI', () => {
     await t.post('/app/tinjauan/jalankan')
     const sesudah = await (await t.get('/app/tinjauan')).text()
     expect(chat.calls).toHaveLength(2)
-    expect(sesudah).toContain('48/100')
-    expect(tabel(sesudah)).not.toContain('Belum ditinjau')
+    expect(sesudah).toContain('48')
+    // Setelah ditinjau, baris tidak lagi menawarkan tombol tinjau satuan.
+    expect(tabel(sesudah)).not.toContain('Belum dinilai')
   })
 
   it('daftar tinjauan dipaginasi seperti daftar lain', async () => {

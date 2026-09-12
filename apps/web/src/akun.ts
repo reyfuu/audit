@@ -12,6 +12,7 @@
 import { Elysia, t } from 'elysia'
 import { sessionPlugin, secureDari, type RawApi } from './auth-guard'
 import { cookieSesi } from './session'
+import { ICONS } from './icons'
 import { esc, html, plainPage, redirect, shell } from './shell'
 
 export interface AkunDeps {
@@ -27,10 +28,13 @@ export function kodePage(d: {
 } = {}): string {
   return plainPage('Masuk dengan kode — SiapAI', `
 <div class="card">
-  <p class="eyebrow">SiapAI</p>
+  <div class="login-brand"><span class="logo-mark" aria-hidden="true">S</span>
+    <span>SiapAI</span></div>
   <h1 style="font-size:22px">Masuk dengan kode</h1>
-  ${d.error ? `<div class="banner banner-error">${esc(d.error)}</div>` : ''}
-  ${d.info ? `<div class="banner banner-ok">${esc(d.info)}</div>` : ''}
+  ${d.error
+    ? `<div class="banner banner-error" role="alert">${ICONS.awas}<span>${esc(d.error)}</span></div>`
+    : ''}
+  ${d.info ? `<div class="banner banner-ok">${ICONS.ok}<span>${esc(d.info)}</span></div>` : ''}
   ${d.challengeId
     ? `<p class="muted">Kami mengirim kode 6 digit ke ${esc(d.email)}.
          Kode berlaku 10 menit.</p>
@@ -40,7 +44,8 @@ export function kodePage(d: {
          <label class="lbl" for="code">Kode dari email</label>
          <input class="field" id="code" name="code" inputmode="numeric" autocomplete="one-time-code"
                 pattern="[0-9]{6}" maxlength="6" required placeholder="123456">
-         <button class="btn btn-primary" type="submit" style="width:100%">Masuk</button>
+         <button class="btn btn-primary btn-icon" type="submit" style="width:100%">
+           ${ICONS.keluar}Masuk</button>
        </form>
        <p class="muted" style="margin-top:16px">
          Tidak menerima kode? <a href="/masuk/kode">Minta ulang</a>.</p>`
@@ -51,7 +56,8 @@ export function kodePage(d: {
          <input class="field" id="email" name="email" type="email" required
                 autocomplete="username" inputmode="email" value="${esc(d.email ?? '')}"
                 placeholder="nama@perusahaan.id">
-         <button class="btn btn-primary" type="submit" style="width:100%">Kirim kode</button>
+         <button class="btn btn-primary btn-icon" type="submit" style="width:100%">
+           ${ICONS.undangan}Kirim kode</button>
        </form>`}
   <p class="muted" style="margin-top:16px">
     Sudah punya kata sandi? <a href="/masuk">Masuk dengan kata sandi</a>.</p>
@@ -119,9 +125,13 @@ export function akunModule({ raw, publicBase }: AkunDeps) {
         body: `
 <div class="page-head"><h1>Akun</h1></div>
 
-${query.ok === 'sandi' ? '<div class="banner banner-ok">Kata sandi berhasil disimpan.</div>' : ''}
-${query.ok === 'undang' ? '<div class="banner banner-ok">Undangan dibuat. Anggota baru masuk lewat "Masuk dengan kode".</div>' : ''}
-${query.gagal ? `<div class="banner banner-error">${esc(query.gagal)}</div>` : ''}
+${query.ok === 'sandi'
+  ? `<div class="banner banner-ok" role="status">${ICONS.ok}<span>Kata sandi berhasil disimpan.</span></div>` : ''}
+${query.ok === 'undang'
+  ? `<div class="banner banner-ok" role="status">${ICONS.ok}<span>Undangan dibuat.
+      Anggota baru masuk lewat "Masuk dengan kode".</span></div>` : ''}
+${query.gagal
+  ? `<div class="banner banner-error" role="alert">${ICONS.awas}<span>${esc(query.gagal)}</span></div>` : ''}
 
 <div class="card">
   <h2>Profil</h2>
@@ -139,7 +149,8 @@ ${query.gagal ? `<div class="banner banner-error">${esc(query.gagal)}</div>` : '
     <label class="lbl" for="new">Kata sandi baru</label>
     <input class="field" id="new" name="new_password" type="password" required
            autocomplete="new-password" minlength="10" style="width:100%;margin-bottom:12px">
-    <button class="btn btn-primary btn-sm" type="submit">Simpan kata sandi</button>
+    <button class="btn btn-primary btn-sm btn-icon" type="submit">
+      ${ICONS.ok}Simpan kata sandi</button>
   </form>
 </div>
 
@@ -157,7 +168,7 @@ ${bolehMengundang
           <option value="auditor">Auditor</option>
           <option value="auditor_admin">Admin auditor</option>
         </select>
-        <button class="btn btn-sm" type="submit">Kirim undangan</button>
+        <button class="btn btn-sm btn-icon" type="submit">${ICONS.undangan}Kirim undangan</button>
       </form>
      </div>`
   : `<div class="card">

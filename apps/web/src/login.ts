@@ -9,6 +9,7 @@ import { Elysia, t } from 'elysia'
 import type { RawApi } from './auth-guard'
 import { secureDari } from './auth-guard'
 import { cookieHapus, cookieSesi, sesiDari } from './session'
+import { ICONS } from './icons'
 import { esc, html, plainPage, redirect } from './shell'
 
 export interface LoginDeps {
@@ -19,10 +20,13 @@ export interface LoginDeps {
 export function loginPage(d: { error?: string; email?: string } = {}): string {
   return plainPage('Masuk — SiapAI', `
 <div class="card">
-  <p class="eyebrow">SiapAI</p>
+  <div class="login-brand"><span class="logo-mark" aria-hidden="true">S</span>
+    <span>SiapAI</span></div>
   <h1 style="font-size:22px">Masuk sebagai auditor</h1>
   <p class="muted">Gunakan email dan kata sandi akun auditor Anda.</p>
-  ${d.error ? `<div class="banner banner-error">${esc(d.error)}</div>` : ''}
+  ${d.error
+    ? `<div class="banner banner-error" role="alert">${ICONS.awas}<span>${esc(d.error)}</span></div>`
+    : ''}
   <form method="post" action="/masuk">
     <label class="lbl" for="email">Email</label>
     <input class="field" id="email" name="email" type="email" required autocomplete="username"
@@ -30,7 +34,8 @@ export function loginPage(d: { error?: string; email?: string } = {}): string {
     <label class="lbl" for="password">Kata sandi</label>
     <input class="field" id="password" name="password" type="password" required
            autocomplete="current-password" placeholder="Kata sandi">
-    <button class="btn btn-primary" type="submit" style="width:100%">Masuk</button>
+    <button class="btn btn-primary btn-icon" type="submit" style="width:100%">
+      ${ICONS.keluar}Masuk</button>
   </form>
   <p class="muted" style="margin-top:16px">
     Baru diundang dan belum punya kata sandi?

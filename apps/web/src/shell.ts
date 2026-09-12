@@ -4,6 +4,7 @@
  * Dipisah dari modul rute agar setiap halaman hanya memikirkan isinya, dan
  * navigasi tidak pernah berbeda-beda antar halaman.
  */
+import { ICONS, type IconName } from './icons'
 import { STYLES, APP_STYLES } from './styles'
 
 export const esc = (s: unknown): string =>
@@ -13,37 +14,26 @@ export const esc = (s: unknown): string =>
 export interface NavItem {
   href: string
   label: string
-  icon: string
+  icon: IconName
 }
 
 export const NAV: NavItem[] = [
-  { href: '/app', label: 'Ringkasan', icon: '▦' },
-  { href: '/app/undangan', label: 'Undangan', icon: '✉' },
-  { href: '/app/perusahaan', label: 'Perusahaan', icon: '🏢' },
-  { href: '/app/tinjauan', label: 'Tinjauan AI', icon: '✦' },
-  { href: '/app/akun', label: 'Akun & tim', icon: '☰' },
+  { href: '/app', label: 'Ringkasan', icon: 'ringkasan' },
+  { href: '/app/undangan', label: 'Undangan', icon: 'undangan' },
+  { href: '/app/perusahaan', label: 'Perusahaan', icon: 'perusahaan' },
+  { href: '/app/tinjauan', label: 'Tinjauan AI', icon: 'tinjauan' },
+  { href: '/app/akun', label: 'Akun & tim', icon: 'akun' },
 ]
+
+/** Lencana merek: inisial dalam kotak, agar sidebar punya jangkar visual. */
+const LOGO = `<span class="logo-mark" aria-hidden="true">S</span>`
 
 function head(title: string): string {
   return `<meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
 <title>${esc(title)}</title>
-<style>${STYLES}
-.tbl { width:100%; border-collapse:collapse; }
-.tbl th { text-align:left; font-size:13px; color:var(--muted); font-weight:600;
-  padding:8px 6px; border-bottom:1px solid var(--border); }
-.tbl td { padding:12px 6px; border-bottom:1px solid var(--border); font-size:15px; vertical-align:top; }
-.pill { display:inline-block; font-size:12px; font-weight:600; padding:3px 10px;
-  border-radius:999px; border:1px solid currentColor; }
-.qr { display:block; width:180px; height:180px; border:1px solid var(--border);
-  border-radius:var(--radius); background:#fff; }
-.copybox { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:13px;
-  background:var(--bg); border:1px solid var(--border); border-radius:6px;
-  padding:10px; word-break:break-all; margin:8px 0; }
-.grid { display:grid; gap:16px; }
-@media (min-width:900px) { .grid-2 { grid-template-columns:1fr 1fr; } }
-${APP_STYLES}</style>`
+<style>${STYLES}${APP_STYLES}</style>`
 }
 
 /**
@@ -59,17 +49,18 @@ export function shell(d: {
 }): string {
   const nav = NAV.map((n) => `<a class="nav" href="${n.href}"${
     n.href === d.active ? ' aria-current="page"' : ''
-  }><span class="ic" aria-hidden="true">${n.icon}</span>${esc(n.label)}</a>`).join('')
+  }><span class="ic">${ICONS[n.icon]}</span>${esc(n.label)}</a>`).join('')
 
   return `<!doctype html><html lang="id"><head>${head(d.title)}</head><body>
 <div class="shell">
   <nav class="side" aria-label="Navigasi utama">
-    <div class="logo">SiapAI</div>
+    <a class="logo" href="/app">${LOGO}<span>SiapAI</span></a>
     ${nav}
     <div class="sep">
       ${d.email ? `<div class="who">${esc(d.email)}</div>` : ''}
       <form method="post" action="/keluar" style="margin:0">
-        <button class="btn btn-sm" type="submit" style="width:100%">Keluar</button>
+        <button class="btn btn-sm btn-icon" type="submit" style="width:100%">
+          ${ICONS.keluar}Keluar</button>
       </form>
     </div>
   </nav>
