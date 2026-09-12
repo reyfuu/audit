@@ -18,6 +18,7 @@ Owner    ──pindai QR / klik tautan──────┘
 |---|---|
 | [docs/BRD.md](docs/BRD.md) | Masalah bisnis, KPI, model undangan, risiko |
 | [docs/PRD.md](docs/PRD.md) | Persona, 21 fitur, alur undangan & QR, prinsip mobile-first |
+| [docs/DEPLOY.md](docs/DEPLOY.md) | Instalasi VPS: push-pull, systemd, nginx, TLS, seed akun demo |
 | [docs/FRD.md](docs/FRD.md) | FR-01..FR-33 + AC yang dapat diuji, business rule skoring |
 | [docs/TRD.md](docs/TRD.md) | Arsitektur Elysia/Bun, ERD, keamanan token, kinerja, strategi tes |
 | [DESIGN.md](DESIGN.md) | ADR, state machine, design token, wireframe, komponen |
@@ -154,6 +155,8 @@ dijalankan ulang. Tautan serta QR yang sudah dibagikan tetap berlaku.
 
 ## Perintah Lain
 ```bash
+bun run start         # jalankan produksi (API + web satu proses)
+bun run seed          # siapkan akun demo di penyimpanan permanen
 bun run verify        # typecheck + validator dokumen + keterlacakan + semua uji
 bun run verify:pg     # semua di atas, ditambah uji terhadap PostgreSQL nyata
 bun run verify:all    # SEMUA loop termasuk pemeriksaan visual dan spike (lambat)
