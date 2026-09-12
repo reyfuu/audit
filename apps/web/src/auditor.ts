@@ -321,7 +321,9 @@ ${query.selesai ? `<div class="banner banner-ok">${esc(query.selesai)} assessmen
   query.sebagian ? ` ${esc(query.sebagian)} gagal dan dapat dicoba lagi.` : ''}</div>` : ''}
 
 <div class="stats">
-  <div class="stat"><b>${selesai.length}</b><span>Laporan selesai</span></div>
+  <div class="stat"><b>${selesai.length}</b>
+    <span>Laporan selesai${invitations.length > selesai.length
+      ? ` dari ${invitations.length} undangan` : ''}</span></div>
   <div class="stat"><b>${sudah.length}</b><span>Sudah ditinjau</span></div>
   <div class="stat"><b>${belum}</b><span>Menunggu tinjauan</span></div>
   <div class="stat"><b>${sudah.filter((x) =>
@@ -330,15 +332,28 @@ ${query.selesai ? `<div class="banner banner-ok">${esc(query.selesai)} assessmen
 </div>
 
 ${selesai.length === 0
-  ? `<div class="card"><p class="muted">Belum ada laporan selesai untuk ditinjau.</p></div>`
+  ? `<div class="card">
+      <p class="muted">Belum ada laporan selesai untuk ditinjau.
+         AI meninjau jawaban yang sudah dikirim responden, jadi undangan yang
+         masih berstatus terkirim atau sedang diisi belum muncul di sini.</p>
+      <p><a class="btn btn-sm" href="/app/undangan"
+            style="display:inline-block;line-height:44px;text-decoration:none">
+        Lihat status undangan</a></p>
+     </div>`
   : `<div class="card">
       <h2>Tinjau massal</h2>
       <p class="muted">Meninjau assessment yang belum pernah ditinjau, maksimal
          ${PER_PAGE} sekaligus, agar biaya model tetap terkendali.</p>
+      ${belum === 0
+        ? `<p class="muted">Semua ${sudah.length} laporan yang selesai sudah ditinjau.
+             Tinjauan baru muncul di sini setelah ada responden lain yang mengirim
+             jawabannya. Untuk meninjau ulang yang sudah ada, buka perusahaannya
+             lalu tekan tombol "Tinjau ulang".</p>`
+        : ''}
       <form method="post" action="/app/tinjauan/jalankan" style="margin-top:12px">
         <button class="btn btn-primary btn-sm" type="submit"
           ${belum === 0 ? 'disabled' : ''}>
-          Tinjau ${belum} assessment</button>
+          ${belum === 0 ? 'Tidak ada yang perlu ditinjau' : `Tinjau ${belum} assessment`}</button>
       </form>
     </div>
 

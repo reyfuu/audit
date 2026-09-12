@@ -194,11 +194,29 @@ describe('FR-31 halaman tinjauan AI', () => {
     expect(tabel(h2).match(/<tr>/g) ?? []).toHaveLength(5)
   }, 60000)
 
-  it('tanpa laporan selesai, halaman mengatakannya apa adanya', async () => {
+  it('tanpa laporan selesai, halaman menjelaskan sebabnya, bukan sekadar kosong', async () => {
     const t = await setup(stubChat().client)
     await perusahaan(t, 'PT Belum Isi')
     const page = await (await t.get('/app/tinjauan')).text()
     expect(page).toContain('Belum ada laporan selesai')
+    // Sebabnya harus terbaca: undangan yang belum dikirim balik tidak dapat ditinjau.
+    expect(page).toContain('sedang diisi belum muncul di sini')
+    expect(page).toContain('/app/undangan')
+  })
+
+  it('setelah semua ditinjau, tombol mati disertai alasannya', async () => {
+    const t = await setup(stubChat().client)
+    await perusahaan(t, 'PT Sudah Semua', true)
+    await t.post('/app/tinjauan/jalankan')
+
+    const page = await (await t.get('/app/tinjauan')).text()
+    // Tombol mati tanpa penjelasan membuat fitur terasa rusak.
+    expect(page).toContain('Tidak ada yang perlu ditinjau')
+    expect(page).toContain('sudah ditinjau')
+    expect(page).toContain('Tinjau ulang')
+    // Entitas HTML tidak boleh bocor sebagai teks mentah ke layar.
+    expect(page).not.toContain('&ldquo;')
+    expect(page).not.toContain('&amp;ldquo;')
   })
 
   it('tinjauan internal tidak bocor ke laporan yang dibagikan maupun ke responden', async () => {
