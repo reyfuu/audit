@@ -120,7 +120,7 @@ Tipe: `SC` single_choice · `MC` multi_choice · `S5` scale_1_5 · `B` boolean �
 - 0 Sangat bervariasi · 50 Standar sebagian · 100 Seragam & terukur dengan SLA
 **PRC-03 (SC, w=2)** Tingkat otomasi saat ini?
 - 0 Semua manual · 25 Otomasi spreadsheet · 50 Beberapa alur otomatis di aplikasi · 75 Workflow lintas sistem otomatis · 100 Otomasi dipantau dengan metrik
-**PRC-04 (MC, w=2)** Proses mana yang paling memakan waktu manual? (input data, pelaporan, layanan pelanggan, persetujuan, rekonsiliasi, penjadwalan, quality check) — tidak diskor, dipakai untuk rekomendasi use case.
+**PRC-04 (MC, w=0)** Proses mana yang paling memakan waktu manual? (input data, pelaporan, layanan pelanggan, persetujuan, rekonsiliasi, penjadwalan, quality check) — **tidak diskor**, dipakai untuk memilih use case pada rekomendasi.
 **PRC-05 (SC, w=2)** Apakah kinerja proses diukur dengan KPI?
 - 0 Tidak · 50 Beberapa KPI dilaporkan bulanan · 100 KPI real-time dengan pemilik
 
@@ -171,3 +171,18 @@ Skoring Quick Check memakai bobot dimensi yang sama, dinormalisasi terhadap pert
 | REC-TEC-001 | `TEC-02 ≤ 25` | Minta akses API ke vendor sistem inti atau bangun lapisan integrasi | 4 | 3 | 3_6M |
 | REC-PRC-001 | `PRC-01 ≤ 25` | Dokumentasikan 3 proses inti yang paling mahal | 3 | 2 | 0_3M |
 | REC-FIN-001 | `FIN-01 ≤ 50` | Ukur biaya baseline proses target sebelum investasi | 5 | 1 | 0_3M |
+
+---
+
+## Rekomendasi Lanjutan (tanpa pemicu)
+Dipakai untuk organisasi yang sudah matang, agar jaminan minimal 3 rekomendasi (BA3) tidak berubah menjadi saran mengerjakan hal yang sudah selesai. Lihat FR-14 AC3.
+
+| Kode | Dimensi | Judul | Dampak | Usaha | Horizon |
+|---|---|---|---|---|---|
+| REC-ADV-001 | DAT | Bangun feature store dan pantau data drift | 4 | 3 | 3_6M |
+| REC-ADV-002 | STR | Jalankan pilot AI kecil dengan kriteria keberhasilan tertulis | 5 | 3 | 3_6M |
+| REC-ADV-003 | GOV | Siapkan proses evaluasi dan audit model berkala | 4 | 2 | 3_6M |
+| REC-ADV-004 | PPL | Bentuk komunitas praktik AI lintas divisi | 3 | 1 | 3_6M |
+| REC-ADV-005 | TEC | Siapkan jalur MLOps untuk penyajian & pemantauan model | 4 | 4 | 6_12M |
+| REC-ADV-006 | PRC | Rancang ulang proses agar manusia dan AI berbagi peran | 4 | 3 | 6_12M |
+| REC-ADV-007 | FIN | Lacak nilai terealisasi dari tiap inisiatif AI | 4 | 2 | 6_12M |

@@ -78,10 +78,13 @@ Pertanyaan tidak visible dikeluarkan dari pembilang dan penyebut (tidak dihukum)
 **BR-09 Confidence.** `confidence = 0.6 + 0.4 × rasio_pertanyaan_dengan_bukti`, ditampilkan sebagai Low/Medium/High.
 
 **FR-14 Rekomendasi.**
-- Setiap pertanyaan dengan skor < 60 memicu satu atau lebih `Recommendation` dari katalog rule.
+- Setiap pertanyaan dengan skor <= ambang pemicunya memicu satu atau lebih `Recommendation` dari katalog rule.
 - Rekomendasi memiliki `impact` (1–5), `effort` (1–5), `horizon` (`0_3M`|`3_6M`|`6_12M`), `owner_role`, `estimated_cost_band`.
 - AC1: Diurutkan berdasar `priority_score = impact / effort`, ambil top 10, minimal 3.
 - AC2: Deduplikasi berdasarkan `recommendation_code`.
+- AC3 **Relevansi**: rekomendasi yang seluruh pemicunya sudah terpenuhi (skor di atas ambang) tidak boleh muncul. Organisasi yang sudah matang menerima *rekomendasi lanjutan* berkode `REC-ADV-*` yang tidak memiliki pemicu, alih-alih disuruh mengerjakan hal yang sudah selesai.
+- AC4 **Keseimbangan roadmap**: pemilihan menyisakan kuota 2 slot untuk horizon `3_6M` dan 1 slot untuk `6_12M`. Tanpa kuota, pengurutan `impact/effort` murni selalu dimenangkan quick win sehingga roadmap jangka menengah dan panjang selalu kosong. Di dalam kuota tersebut urutan memakai `impact` menurun, karena slot jangka panjang memang diperuntukkan bagi pekerjaan fondasi yang usahanya besar.
+- AC5 **Urutan stabil**: hasil tidak bergantung pada urutan katalog masukan.
 
 **FR-15 Benchmark.**
 - AC1: Percentile dihitung terhadap assessment `SCORED` dalam 12 bulan terakhir pada `industry` + `employee_band` yang sama.

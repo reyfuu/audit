@@ -8,7 +8,7 @@ const H = (extra: Record<string, string> = {}) => ({
   'x-org-id': 'org1',
   ...extra,
 })
-const patch = (id: string, body: unknown, headers = H()) =>
+const patch = (id: string, body: unknown, headers: Record<string, string> = H()) =>
   app.handle(new Request(`http://localhost/assessments/${id}/answers`, {
     method: 'PATCH', headers, body: JSON.stringify(body),
   }))

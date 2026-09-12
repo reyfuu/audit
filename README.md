@@ -46,11 +46,28 @@ Verdict: `READY ≥70` · `CONDITIONALLY_READY 50–69` · `NOT_READY <50`, deng
 3. Implementasi mesin skoring + uji determinisme lebih dulu.
 4. Form assessment dan halaman hasil.
 
+## Implementasi
+| Paket | Isi | Status |
+|---|---|---|
+| `packages/scoring` | Mesin skoring murni: skor 7 dimensi, hard gate, rekomendasi berprioritas, DSL visibilitas, kuesioner v1 (43 pertanyaan + 23 rekomendasi) | Selesai, 90 uji |
+| `apps/api` | Elysia (Bun) | Berikutnya |
+| `apps/web` | Next.js form & laporan | Berikutnya |
+
+```bash
+bun run verify   # typecheck + validator dokumen + uji scoring
+bun run demo     # skor 3 profil bisnis contoh
+bun run test     # semua uji termasuk spike Elysia
+```
+
 ## Bukti Verifikasi
 | Check | Perintah | Hasil |
 |---|---|---|
 | Konsistensi dokumen & kontrak | `python3 tools/validate_docs.py` | 69/69 lulus |
 | OpenAPI 3.1 sah | `openapi-spec-validator contracts/openapi.yaml` | VALID |
+| Mesin skoring & rekomendasi | `bun test packages/scoring` | 90/90 lulus, 2097 assertion |
+| Type safety (strict) | `bunx tsc --noEmit` | bersih |
 | Pola arsitektur Elysia jalan | `cd tools/spike-elysia && bun test` | 12/12 lulus |
+
+Uji scoring mencakup property test determinisme (200 profil acak), monotonicity (150 profil), jaminan minimal 3 rekomendasi pada 50 profil acak, serta keselarasan otomatis antara kode, `QUESTION_BANK.md`, dan `openapi.yaml`.
 
 Validator terbukti dapat gagal (mutation test): menghapus endpoint submit, mengubah bobot dimensi, menambah kode error fiktif, dan mengembalikan sebutan NestJS semuanya terdeteksi sebagai FAIL.

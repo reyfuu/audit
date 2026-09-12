@@ -1,0 +1,20 @@
+{
+  "name": "siapai",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "test": "bun test packages && cd tools/spike-elysia && bun test",
+    "test:scoring": "bun test packages/scoring",
+    "typecheck": "tsc --noEmit",
+    "validate:docs": "python3 tools/validate_docs.py",
+    "demo": "bun packages/scoring/demo.ts",
+    "verify": "bun run typecheck && bun run validate:docs && bun run test:scoring"
+  },
+  "devDependencies": {
+    "bun-types": "^1.4.2",
+    "typescript": "^7.0.2"
+  }
+}

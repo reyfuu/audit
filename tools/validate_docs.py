@@ -205,8 +205,10 @@ check("R22b","PRD merujuk dokumen lain", all(d in DOCS["PRD"] for d in ["BRD.md"
 
 # ── R23 stack backend konsisten: Elysia/Bun/Drizzle, tanpa sisa NestJS/Prisma
 STALE = ["NestJS", "Prisma", "prisma/", "Vitest", "npm audit", "class-validator"]
-# Penyebutan sah hanya sebagai alternatif yang ditolak atau catatan konsekuensi.
-ALLOWED_CONTEXT = ("ditolak", "menggantikan", "lebih muda dari", "Alternatif")
+# Penyebutan sah: alternatif yang ditolak, catatan konsekuensi, atau deskripsi
+# mutation test yang justru membuktikan validator ini bekerja.
+ALLOWED_CONTEXT = ("ditolak", "menggantikan", "lebih muda dari", "Alternatif",
+                   "mutation test", "terdeteksi sebagai FAIL")
 stale_hits = []
 for name, text in DOCS.items():
     for i, line in enumerate(text.splitlines(), 1):
