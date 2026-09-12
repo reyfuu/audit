@@ -39,7 +39,7 @@ itu jujur, sehingga status tidak pernah dilaporkan lebih baik dari kenyataan.
 | `packages/scoring` | Mesin skoring: 7 dimensi, hard gate, rekomendasi, DSL visibilitas, kuesioner v1 | Berjalan, 92 uji |
 | `packages/ai` | Klien 9router + tinjauan AI atas kualitas jawaban | Berjalan, 14 uji |
 | `apps/api` | Perusahaan klien, undangan + QR, jalur responden bertoken | Berjalan, 144 uji |
-| `apps/web` | Form responden mobile-first + dashboard auditor bersidebar (masuk, undangan, QR, status, tinjauan AI, akun & tim) | Berjalan, 98 uji |
+| `apps/web` | Form responden mobile-first + dashboard auditor bersidebar (masuk, undangan, QR, status, tinjauan AI, akun & tim) | Berjalan, 101 uji |
 | `apps/api/src/db` | Skema Drizzle + repo PostgreSQL, migrasi siap pakai | Berjalan, 16 uji kontrak |
 | `apps/api` auth | Login email+kata sandi (dan OTP), JWT 15 menit, refresh rotatif, undangan tim | Berjalan, 44 uji |
 | `apps/api` laporan | Ekspor PDF & tautan bagikan read-only | Berjalan, 19 uji |
@@ -202,7 +202,7 @@ bun run test     # semua uji termasuk spike Elysia
 | Mesin skoring & rekomendasi | `bun test packages/scoring` | 92/92 lulus |
 | Klien model & tinjauan AI | `bun test packages/ai` | 14/14 lulus |
 | Alur undangan, QR, dan pengisian | `bun test apps/api` | 144/144 lulus |
-| Form web, login, akun tim, dan dashboard bersidebar | `bun test apps/web` | 98/98 lulus |
+| Form web, login, akun tim, dan dashboard bersidebar | `bun test apps/web` | 101/101 lulus |
 | Tampilan di iPhone + dashboard + laporan bagikan | `bun run check:visual` | 35/35 lulus |
 | Autentikasi & skenario serangan | `bun test apps/api/test/auth.test.ts` | 44/44 lulus |
 | Tautan bagikan & ekspor PDF | `bun test apps/api/test/report.test.ts` | 19/19 lulus |

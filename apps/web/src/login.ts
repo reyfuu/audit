@@ -7,7 +7,7 @@
  */
 import { Elysia, t } from 'elysia'
 import type { RawApi } from './auth-guard'
-import { secureDari } from './auth-guard'
+import { secureDari, sessionApi } from './auth-guard'
 import { cookieHapus, cookieSesi, sesiDari } from './session'
 import { ICONS } from './icons'
 import { esc, html, plainPage, redirect } from './shell'
@@ -49,9 +49,25 @@ export function loginModule({ raw, publicBase }: LoginDeps) {
   const secure = secureDari(publicBase)
 
   return new Elysia()
-    .get('/masuk', ({ headers }) => {
-      // Sudah masuk: jangan paksa login ulang.
-      if (sesiDari(headers.cookie)) return redirect('/app')
+    .get('/masuk', async ({ headers }) => {
+      /*
+       * Sudah masuk: jangan paksa login ulang.
+       *
+       * Keberadaan cookie saja TIDAK cukup untuk menyimpulkan itu. Cookie yang
+       * tertinggal dari proses demo sebelumnya masih ada di peramban, tetapi
+       * sesinya sudah mati bersama penyimpanan di memori. Dulu halaman ini
+       * mengarahkan ke /app, /app mendapati sesinya tidak sah dan mengarahkan
+       * balik ke sini, dan peramban berputar sampai menyerah dengan
+       * ERR_TOO_MANY_REDIRECTS.
+       *
+       * Karena itu sesinya benar-benar diverifikasi. Bila tidak sah, cookie
+       * basi dibuang sekalian supaya keadaan ini tidak berulang.
+       */
+      if (sesiDari(headers.cookie)) {
+        const aktif = await sessionApi(raw, headers.cookie, secure)
+        if (aktif) return redirect('/app')
+        return html(loginPage(), 200, cookieHapus({ secure }))
+      }
       return html(loginPage())
     })
 

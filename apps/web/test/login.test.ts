@@ -108,6 +108,52 @@ describe('FR-02 halaman masuk', () => {
     expect(res.headers.get('location')).toBe('/app')
   })
 
+  it('cookie basi tidak menyebabkan lingkaran pengalihan tanpa akhir', async () => {
+    const t = await setup()
+    // Meniru peramban yang menyimpan cookie dari proses demo sebelumnya:
+    // cookienya ada, tetapi sesinya sudah mati bersama penyimpanan di memori.
+    const basi = `${ACCESS_COOKIE}=basi.token.lama; ${REFRESH_COOKIE}=refresh-sudah-mati`
+
+    // Dulu: /masuk -> /app -> /masuk -> ... sampai ERR_TOO_MANY_REDIRECTS.
+    const masuk = await t.get('/masuk', basi)
+    expect(masuk.status).toBe(200)
+    expect(await masuk.text()).toContain('type="password"')
+
+    // Cookie basi ikut dibuang agar keadaan ini tidak berulang.
+    const dibuang = masuk.headers.getSetCookie?.() ?? []
+    expect(dibuang).toHaveLength(2)
+    expect(dibuang.every((c) => c.includes('Max-Age=0'))).toBe(true)
+
+    // Dari sisi /app cukup satu pengalihan, lalu berhenti.
+    const app = await t.get('/app', basi)
+    expect(app.status).toBe(303)
+    expect(app.headers.get('location')).toBe('/masuk')
+    expect((await t.get('/masuk', basi)).status).toBe(200)
+  })
+
+  it('cookie separuh atau kosong tidak membuat pengalihan berputar', async () => {
+    const t = await setup()
+    // Cookie akses dan refresh bisa hilang tidak bersamaan, mis. karena umurnya
+    // berbeda. Tiap kombinasi harus berakhir di halaman masuk, bukan berputar.
+    for (const cookie of [
+      `${ACCESS_COOKIE}=hanya-access`,
+      `${REFRESH_COOKIE}=hanya-refresh`,
+      `${ACCESS_COOKIE}=; ${REFRESH_COOKIE}=`,
+    ]) {
+      const app = await t.get('/app', cookie)
+      expect(app.headers.get('location')).toBe('/masuk')
+      expect((await t.get('/masuk', cookie)).status).toBe(200)
+    }
+  })
+
+  it('sesi yang sah tetap dilewatkan ke dashboard tanpa login ulang', async () => {
+    const t = await setup()
+    const cookie = t.cookieDari(await t.post('/masuk', { email: 'd@x.id', password: SANDI }))
+    const res = await t.get('/masuk', cookie)
+    expect(res.status).toBe(303)
+    expect(res.headers.get('location')).toBe('/app')
+  })
+
   it('cookie ditandai Secure hanya bila situs dilayani lewat https', async () => {
     const lokal = await setup('http://localhost:3000')
     const aman = await setup('https://siapai.id')
