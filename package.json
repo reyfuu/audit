@@ -24,7 +24,9 @@
     "test:pg": "TEST_DATABASE_URL=postgres://localhost:5432/siapai_test bun test apps/api",
     "verify:pg": "bun run verify && bun run test:pg",
     "verify:readme": "python3 tools/verify_readme.py",
-    "verify:all": "bun run verify && bun run test:pg && bun run check:visual && cd tools/spike-elysia && bun test"
+    "verify:all": "bun run verify && bun run test:pg && bun run check:visual && cd tools/spike-elysia && bun test",
+    "start": "bun apps/web/src/produksi.ts",
+    "seed": "bun apps/web/demo/seed.ts"
   },
   "devDependencies": {
     "@types/pngjs": "^6.0.5",
