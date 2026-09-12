@@ -34,11 +34,13 @@ Owner    ──pindai QR / klik tautan──────┘
 |---|---|---|
 | `packages/scoring` | Mesin skoring murni: 7 dimensi, hard gate, rekomendasi, DSL visibilitas, kuesioner v1 | Selesai, 90 uji |
 | `apps/api` | Elysia: perusahaan klien, undangan + QR, jalur responden bertoken | Selesai, 36 uji |
-| `apps/web` | Form mobile-first & halaman hasil | Berikutnya |
+| `apps/web` | Form mobile-first, satu pertanyaan per layar, halaman hasil | Selesai, 31 uji |
 
 ```bash
-bun run verify   # typecheck + validator dokumen + semua uji
-bun run demo     # skor 3 profil bisnis contoh
+bun run dev           # jalankan API + form, cetak tautan undangan & QR siap dicoba
+bun run verify        # typecheck + validator dokumen + semua uji
+bun run check:visual  # verifikasi di viewport iPhone sungguhan (Playwright)
+bun run demo          # skor 3 profil bisnis contoh
 ```
 
 ## Model Kesiapan
@@ -80,6 +82,10 @@ bun run test     # semua uji termasuk spike Elysia
 | OpenAPI 3.1 sah | `openapi-spec-validator contracts/openapi.yaml` | VALID |
 | Mesin skoring & rekomendasi | `bun test packages/scoring` | 90/90 lulus |
 | Alur undangan, QR, dan pengisian | `bun test apps/api` | 36/36 lulus |
+| Form web tanpa JavaScript | `bun test apps/web` | 31/31 lulus |
+| Tampilan di iPhone sungguhan | `bun run check:visual` | 17/17 lulus |
 | Type safety (strict) | `bunx tsc --noEmit` | bersih |
+
+Pemeriksaan visual menjalankan Chromium pada viewport iPhone 13 dan mengukur hal yang tidak dapat dibuktikan uji string: target sentuh terhitung ≥ 44px, tidak ada scroll horizontal, kontras 17.7:1, dan form benar-benar selesai dengan 43 ketukan. Alur juga diuji ulang dengan `javaScriptEnabled: false`.
 
 QR code diuji dengan **mendekodenya kembali** memakai `jsqr`, lalu memastikan isinya sama persis dengan `invitation_url` dan token hasil pindai benar-benar membuka form perusahaan yang tepat. Uji scoring mencakup property test determinisme (200 profil acak) dan monotonicity (150 profil).

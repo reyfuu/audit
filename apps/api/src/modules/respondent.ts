@@ -7,6 +7,7 @@
 import { Elysia, t } from 'elysia'
 import {
   QUESTIONNAIRE_V1 as QN, RECOMMENDATION_CATALOG as CATALOG,
+  SECTION_NAMES, SECTION_ORDER,
   missingRequired, recommend, score, scoreAnswer,
 } from '@siapai/scoring'
 import { err } from '../lib/errors'
@@ -101,10 +102,15 @@ export function respondentModule({ repo, now = () => new Date() }: RespondentDep
         const { a } = r
 
         const visible = visibleQuestionsOf(a)
-        const codes = new Set(visible.map((q) => q.code))
-        const dims = QN.dimensions.filter((d) =>
-          visible.some((q) => q.dimension_code === d.code),
-        )
+        // Seksi dibangun dari SECTION_ORDER agar seksi profil (ORG) ikut tampil
+        // dengan namanya sendiri, bukan menumpang nama dimensi berskor.
+        const dims = SECTION_ORDER
+          .filter((code) => visible.some((q) => q.dimension_code === code))
+          .map((code) => ({
+            code,
+            name: SECTION_NAMES[code],
+            weight: QN.dimensions.find((d) => d.code === code)?.weight ?? 0,
+          }))
         const target = query.section
           ? dims.find((d) => d.code === query.section)
           : dims.find((d) =>

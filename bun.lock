@@ -12,6 +12,7 @@
         "@types/pngjs": "^6.0.5",
         "bun-types": "^1.4.2",
         "jsqr": "^1.4.0",
+        "playwright": "^1.63.0",
         "pngjs": "^7.0.0",
         "typescript": "^7.0.2",
       },
@@ -21,6 +22,14 @@
       "version": "1.0.0",
       "dependencies": {
         "@elysiajs/openapi": "^1.4.11",
+        "@siapai/scoring": "workspace:*",
+        "elysia": "^1.4.30",
+      },
+    },
+    "apps/web": {
+      "name": "@siapai/web",
+      "version": "1.0.0",
+      "dependencies": {
         "@siapai/scoring": "workspace:*",
         "elysia": "^1.4.30",
       },
@@ -38,6 +47,8 @@
     "@siapai/api": ["@siapai/api@workspace:apps/api"],
 
     "@siapai/scoring": ["@siapai/scoring@workspace:packages/scoring"],
+
+    "@siapai/web": ["@siapai/web@workspace:apps/web"],
 
     "@sinclair/typebox": ["@sinclair/typebox@0.34.52", "", {}, "sha512-XiMQh7qqVlxZzcVD+kkGMNGMzcTrDMLWI7S4x7z1MkCkbDPrekpZXEUK0eZqZFMuHQg2a2DZOcDIh9o5v3Gonw=="],
 
@@ -148,6 +159,10 @@
     "p-try": ["p-try@2.2.0", "", {}, "sha512-R4nPAVTAU0B9D35/Gk3uJf/7XYbQcyohSKdvAxIRSNghFl4e71hVoGnBNQz9cWaXxO2I10KTC+3jMdvvoKw6dQ=="],
 
     "path-exists": ["path-exists@4.0.0", "", {}, "sha512-ak9Qy5Q7jYb2Wwcey5Fpvg2KoAc/ZIhLSLOSBmRmygPsGwkVVt0fZa0qrtMz+m6tJTAHfZQ8FnmB4MG4LWy7/w=="],
+
+    "playwright": ["playwright@1.63.0", "", { "dependencies": { "playwright-core": "1.63.0" }, "bin": { "playwright": "cli.js" } }, "sha512-+7ziBLidS4NaNCdt57SUDT+wYmmd5fmiQejUic/kb+YsYSCPyOOE9sebzMjNmQrsnNpDJqd4WHvV/8lfKfUDUg=="],
+
+    "playwright-core": ["playwright-core@1.63.0", "", { "bin": { "playwright-core": "cli.js" } }, "sha512-rYCsBF/M5HjUch52bbtVONEFjv6Xu8sm8h72dNlR5bzIE1fvC/bxgspzkjSfU+MweEMmPM8KJebG6nnyxo5mCg=="],
 
     "pngjs": ["pngjs@7.0.0", "", {}, "sha512-LKWqWJRhstyYo9pGvgor/ivk2w94eSjE3RGVuzLGlr3NmD8bf7RcYGze1mNdEHRP6TRP6rMuDHk5t44hnTRyow=="],
 

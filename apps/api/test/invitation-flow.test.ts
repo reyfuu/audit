@@ -282,14 +282,13 @@ describe('FR-26 melanjutkan lintas perangkat', () => {
     const c = await createCompany(t)
     const { body } = await issueInvitation(t, c.id)
 
-    // "HP": jawab satu seksi
+    // "HP": jawab pertanyaan pada seksi yang sedang tampil
     const sec = await (await t.call(`/f/${body.token}/next`)).json()
+    const dijawab = sec.questions.slice(0, 2) as Question[]
     const save = await t.call(`/f/${body.token}/answers`, {
       method: 'PATCH', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
-        answers: sec.questions.slice(0, 2).map((q: Question) => ({
-          question_code: q.code, value: bestValue(q),
-        })),
+        answers: dijawab.map((q) => ({ question_code: q.code, value: bestValue(q) })),
       }),
     })
     expect(save.status).toBe(200)
@@ -297,7 +296,7 @@ describe('FR-26 melanjutkan lintas perangkat', () => {
     // "Laptop": buka tautan yang sama, jawaban harus ada
     const welcome = await (await t.call(`/f/${body.token}`)).json()
     expect(welcome.resume).toBe(true)
-    expect(welcome.progress.answered).toBe(2)
+    expect(welcome.progress.answered).toBe(dijawab.length)
   })
 })
 

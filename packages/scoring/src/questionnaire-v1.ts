@@ -4,7 +4,29 @@
  * questionnaire_versions/questions/question_options dan menjadi immutable
  * setelah PUBLISHED (FR-21).
  */
-import type { Question, QuestionOption, Questionnaire, RecommendationCatalogItem } from './types'
+import type {
+  Question, QuestionOption, Questionnaire, RecommendationCatalogItem, SectionCode,
+} from './types'
+
+/**
+ * Nama seksi untuk ditampilkan di form, termasuk seksi profil `ORG` yang tidak
+ * diskor. UI tidak boleh menebak nama seksi dari daftar dimensi berskor.
+ */
+export const SECTION_NAMES: Record<SectionCode, string> = {
+  ORG: 'Profil Perusahaan',
+  STR: 'Strategi & Kepemimpinan',
+  DAT: 'Data',
+  TEC: 'Teknologi & Infrastruktur',
+  PPL: 'SDM & Keterampilan',
+  PRC: 'Proses & Operasi',
+  GOV: 'Tata Kelola & Kepatuhan',
+  FIN: 'Finansial & Nilai',
+}
+
+/** Urutan seksi dalam form: profil lebih dulu, lalu tujuh dimensi. */
+export const SECTION_ORDER: readonly SectionCode[] = [
+  'ORG', 'STR', 'DAT', 'TEC', 'PPL', 'PRC', 'GOV', 'FIN',
+] as const
 
 /** Helper opsi skala maturitas: skor 0/25/50/75/100 sesuai urutan label. */
 function ladder(...labels: string[]): QuestionOption[] {
@@ -25,7 +47,7 @@ const q = (x: Question): Question => x
 
 export const QUESTIONS: Question[] = [
   // ── Section 0: profil (tidak diskor, tetapi dipakai untuk branching)
-  q({ code: 'ORG-02', dimension_code: 'STR', type: 'single_choice', unscored: true, required: true, weight: 0,
+  q({ code: 'ORG-02', dimension_code: 'ORG', type: 'single_choice', unscored: true, required: true, weight: 0,
       prompt: 'Berapa jumlah karyawan perusahaan Anda?',
       options: [
         { code: '1_9', label: '1–9 orang', score: 0 },

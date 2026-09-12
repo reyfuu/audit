@@ -3,7 +3,7 @@
  * Mencegah kode dan docs/QUESTION_BANK.md serta contracts/openapi.yaml saling melenceng.
  */
 import { describe, it, expect } from 'bun:test'
-import { QUESTIONNAIRE_V1, RECOMMENDATION_CATALOG, DIMENSION_CODES } from '../src'
+import { QUESTIONNAIRE_V1, RECOMMENDATION_CATALOG, DIMENSION_CODES, SECTION_NAMES } from '../src'
 
 const ROOT = new URL('../../../', import.meta.url).pathname
 const qb = await Bun.file(`${ROOT}docs/QUESTION_BANK.md`).text()
@@ -106,9 +106,22 @@ describe('integritas kuesioner', () => {
     expect(new Set(codes).size).toBe(codes.length)
   })
 
-  it('setiap pertanyaan merujuk dimensi yang terdaftar', () => {
-    const dims = new Set(QN.dimensions.map((d) => d.code))
-    for (const q of QN.questions) expect(dims.has(q.dimension_code)).toBe(true)
+  it('setiap pertanyaan merujuk seksi yang terdaftar', () => {
+    // Seksi sah = tujuh dimensi berskor + seksi profil ORG yang tidak diskor.
+    const sections = new Set<string>([...QN.dimensions.map((d) => d.code), 'ORG'])
+    for (const q of QN.questions) expect(sections.has(q.dimension_code)).toBe(true)
+  })
+
+  it('pertanyaan di seksi ORG selalu unscored dan berbobot 0', () => {
+    for (const q of QN.questions.filter((x) => x.dimension_code === 'ORG')) {
+      expect(q.unscored).toBe(true)
+      expect(q.weight).toBe(0)
+    }
+  })
+
+  it('setiap seksi punya nama tampilan', () => {
+    const used = new Set(QN.questions.map((q) => q.dimension_code))
+    for (const s of used) expect(SECTION_NAMES[s]).toBeTruthy()
   })
 
   it('setiap pertanyaan pilihan punya opsi dengan kode unik', () => {

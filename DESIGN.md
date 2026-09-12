@@ -16,6 +16,8 @@
 | ADR-006 | OpenAPI sebagai sumber kebenaran | Tipe manual | Sinkron FE/BE, uji kontrak otomatis |
 | ADR-007 | **Elysia + TypeBox menggantikan NestJS** | NestJS, Fastify, Hono | Skema validasi runtime sekaligus menghasilkan OpenAPI (menguatkan ADR-006), throughput lebih tinggi untuk endpoint autosave yang paling sering dipanggil, dan tipe end-to-end ke frontend via Eden tanpa codegen. Konsekuensi: ekosistem lebih muda, pustaka pihak ketiga yang belum matang di Bun diisolasi di balik adapter. |
 | ADR-008 | Drizzle ORM menggantikan Prisma | Prisma, SQL mentah | Berjalan native di Bun tanpa engine biner, migrasi SQL eksplisit yang cocok dengan strategi expand-and-contract |
+| ADR-009 | Form responden server-rendered dengan progressive enhancement | SPA React/Next | Jalur masuk utama adalah pindai QR di HP, sering pada koneksi seluler buruk. SPA yang gagal dimuat mematikan satu-satunya kesempatan owner mengisi. Form HTML biasa tetap berfungsi tanpa JavaScript; JS hanya menambah autosave. Terverifikasi: halaman 8.7 KB dan alur penuh selesai dengan `javaScriptEnabled: false`. |
+| ADR-010 | Seksi profil `ORG` terpisah dari tujuh dimensi berskor | Menitipkan pertanyaan profil ke dimensi STR | Menitipkan membuat UI melabeli "Berapa jumlah karyawan" sebagai "Strategi & Kepemimpinan", yang menyesatkan responden. Ditemukan lewat pemeriksaan visual, bukan uji unit. |
 
 ### A2. Mesin Skoring — alur
 ```mermaid

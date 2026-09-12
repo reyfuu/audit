@@ -3,11 +3,19 @@
  * Paket ini murni: tanpa I/O, tanpa tanggal, tanpa acak. Lihat TRD §5 dan ADR-002.
  */
 
+/**
+ * Tujuh dimensi berskor. `ORG` sengaja TIDAK termasuk: ia adalah seksi profil
+ * yang tidak diskor dan tidak punya bobot.
+ */
 export type DimensionCode = 'STR' | 'DAT' | 'TEC' | 'PPL' | 'PRC' | 'GOV' | 'FIN'
 
 export const DIMENSION_CODES: readonly DimensionCode[] = [
   'STR', 'DAT', 'TEC', 'PPL', 'PRC', 'GOV', 'FIN',
 ] as const
+
+/** Seksi profil organisasi; ditampilkan lebih dulu, tidak ikut skor. */
+export const PROFILE_SECTION = 'ORG' as const
+export type SectionCode = DimensionCode | typeof PROFILE_SECTION
 
 export type QuestionType =
   | 'single_choice' | 'multi_choice' | 'scale_1_5' | 'boolean' | 'number' | 'text'
@@ -57,7 +65,11 @@ export type VisibilityRule =
 
 export interface Question {
   code: string
-  dimension_code: DimensionCode
+  /**
+   * Seksi tempat pertanyaan ini tampil. Untuk pertanyaan profil bernilai 'ORG',
+   * yang tidak punya bobot dan tidak pernah masuk perhitungan skor.
+   */
+  dimension_code: SectionCode
   type: QuestionType
   prompt: string
   help_text?: string
@@ -147,7 +159,7 @@ export interface ScoreResult {
 
 export interface QuestionScore {
   question_code: string
-  dimension_code: DimensionCode
+  dimension_code: SectionCode
   /** null bila tidak visible atau tidak dijawab. */
   score: number | null
   weight: number
