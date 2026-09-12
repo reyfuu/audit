@@ -75,16 +75,30 @@ kunci pengembangan yang diketahui umum lebih berbahaya daripada gagal menyala.
 ## TLS
 
 Sertifikat saat ini meminjam milik `prodpilot.aipreneur.co.id`, karena catatan
-DNS `audit.aipreneur.co.id` belum dibuat saat instalasi. Begitu DNS mengarah ke
-31.97.66.119, terbitkan yang benar:
+DNS `audit.aipreneur.co.id` belum dibuat saat instalasi. Sampai itu dilakukan,
+peramban akan memperingatkan ketidakcocokan nama.
+
+**Langkah yang tersisa, satu kali saja:**
+
+1. Di Cloudflare (nameserver domain ini: `drew.ns` dan `eve.ns`), tambahkan
+   A record `audit` → `31.97.66.119`. Bila proxy diaktifkan (awan oranye),
+   matikan dulu selama penerbitan: verifikasi HTTP harus mencapai server ini
+   secara langsung.
+2. Jalankan:
 
 ```bash
 ssh aipreneur-vps
-certbot --nginx -d audit.aipreneur.co.id
-nginx -t && systemctl reload nginx
+cd /var/www/siapai
+bash tools/aktifkan-tls.sh
 ```
 
-Sampai itu dilakukan, peramban akan memperingatkan ketidakcocokan nama.
+Skrip itu memeriksa DNS dan jalur verifikasi ACME lebih dulu, lalu berhenti
+dengan instruksi konkret bila belum siap. Itu disengaja: `certbot` yang
+dijalankan terlalu cepat akan gagal sambil menghabiskan kuota percobaan
+Let's Encrypt, dan pesan galatnya tidak menyebut penyebab sebenarnya.
+
+Jalur verifikasi `/.well-known/acme-challenge/` sudah dikonfigurasi dan
+terbukti berfungsi, sehingga penerbitan tinggal menunggu DNS.
 
 ## Memeriksa keadaan
 
