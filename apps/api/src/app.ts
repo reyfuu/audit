@@ -8,18 +8,22 @@ import { createMemoryRepo, type Repo } from './lib/repo'
 import { invitationModule } from './modules/invitation'
 import { respondentModule } from './modules/respondent'
 import { companyModule } from './modules/company'
+import { authModule } from './modules/auth'
 
 export interface AppDeps {
   /** Penyimpanan; default in-memory. Pakai createPgRepo untuk Postgres. */
   repo?: Repo
   baseUrl?: string
   now?: () => Date
+  /** Pengiriman OTP; default mencetak ke log agar demo dapat berjalan. */
+  sendOtp?: (email: string, code: string) => Promise<void> | void
 }
 
 export function createApp({
   repo = createMemoryRepo(),
   baseUrl = process.env.PUBLIC_BASE_URL ?? 'http://localhost:3001',
   now = () => new Date(),
+  sendOtp,
 }: AppDeps = {}) {
   const app = new Elysia()
     // FRD §11: satu tempat memetakan error ke amplop seragam.
@@ -33,6 +37,7 @@ export function createApp({
       return status(500, err('INTERNAL', 'Terjadi kesalahan internal'))
     })
     .get('/health', () => ({ ok: true }))
+    .use(authModule({ repo, now, ...(sendOtp ? { sendOtp } : {}) }))
     .use(companyModule({ repo }))
     .use(invitationModule({ repo, baseUrl, now }))
     .use(respondentModule({ repo, now }))

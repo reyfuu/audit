@@ -40,14 +40,26 @@ itu jujur, sehingga status tidak pernah dilaporkan lebih baik dari kenyataan.
 | `apps/api` | Perusahaan klien, undangan + QR, jalur responden bertoken | Berjalan, 43 uji |
 | `apps/web` | Form responden mobile-first + dashboard auditor (undangan, QR, status) | Berjalan, 49 uji |
 | `apps/api/src/db` | Skema Drizzle + repo PostgreSQL, migrasi siap pakai | Berjalan, 35 uji |
+| `apps/api` auth | Login email+OTP, JWT 15 menit, refresh rotatif, undangan tim | Berjalan, 32 uji |
+
+### Keamanan autentikasi
+- Kode OTP dan refresh token disimpan sebagai **hash**, tidak pernah polos.
+- OTP: 6 digit dari CSPRNG, berlaku 10 menit, maksimal 5 percobaan.
+- Refresh token **rotatif sekali pakai**. Pemakaian ulang dianggap indikasi
+  token dicuri, sehingga seluruh keluarga sesi dicabut sekaligus.
+- Publik tidak bisa mendaftar sendiri; hanya email yang diundang `auditor_admin`.
+- Respons permintaan OTP identik untuk email terdaftar maupun tidak, agar tidak
+  menjadi orakel daftar auditor.
+- Token pintasan `Bearer user:<id>` hanya hidup bila `ALLOW_DEV_TOKENS=1`, dan
+  **tidak pernah** aktif saat `NODE_ENV=production`.
 
 **Alur utama sudah utuh:** auditor menerbitkan undangan → QR/tautan → owner mengisi → skor dan rekomendasi keluar.
 
-**Yang masih berupa kontrak, belum ada kodenya (22 endpoint):**
-autentikasi auditor (FR-01..FR-04, saat ini memakai token pengembangan),
-hapus draft (FR-13), ekspor PDF (FR-17), tautan bagikan (FR-18),
-riwayat & tren (FR-19), CMS bank pertanyaan (FR-20..FR-22),
-dan benchmark industri sebagai endpoint tersendiri (FR-15 dasarnya sudah ada).
+**Yang masih berupa kontrak, belum ada kodenya (14 endpoint):**
+login Google OAuth (FR-02, butuh kredensial eksternal), hapus draft (FR-13),
+ekspor PDF (FR-17), tautan bagikan (FR-18), riwayat & tren (FR-19),
+CMS bank pertanyaan (FR-20..FR-22), dan benchmark industri sebagai endpoint
+tersendiri (FR-15 dasarnya sudah ada).
 
 ```bash
 python3 tools/traceability.py   # peta FRD -> implementasi -> uji
@@ -63,8 +75,9 @@ bun run demo:lokal
 Perintah itu menyalakan API, form responden, dan dashboard auditor sekaligus,
 lalu mencetak semua tautan yang dibutuhkan.
 
-**Akun demo** — sesi auditor `Dimas Auditor <auditor@demo.id>` sudah aktif
-otomatis di dashboard, karena autentikasi nyata (FR-01..FR-04) belum dipasang.
+**Akun demo** — `Dimas Auditor <auditor@demo.id>`. Demo masuk otomatis lewat
+alur login yang sungguhan (email + OTP), dan kode OTP dicetak ke terminal.
+Untuk mencobanya sendiri: `POST /auth/request-otp` lalu `/auth/verify-otp`.
 
 | Buka | Isinya |
 |---|---|
@@ -148,9 +161,10 @@ bun run test     # semua uji termasuk spike Elysia
 | Alur undangan, QR, dan pengisian | `bun test apps/api` | 43/43 lulus |
 | Form web & dashboard auditor | `bun test apps/web` | 49/49 lulus |
 | Tampilan di iPhone sungguhan | `bun run check:visual` | 17/17 lulus |
-| Kontrak penyimpanan (memori & Postgres) | `bun run test:pg` | 78/78 lulus |
+| Autentikasi & skenario serangan | `bun test apps/api/test/auth.test.ts` | 32/32 lulus |
+| Kontrak penyimpanan (memori & Postgres) | `bun run test:pg` | 110/110 lulus |
 | Type safety (strict) | `bunx tsc --noEmit` | bersih |
-| Keterlacakan FRD → kode → uji | `python3 tools/traceability.py` | 19 siap, 11 ditunda, 0 bermasalah |
+| Keterlacakan FRD → kode → uji | `python3 tools/traceability.py` | 22 siap, 8 ditunda, 0 bermasalah |
 
 Suite kontrak penyimpanan dijalankan terhadap implementasi memori **dan**
 PostgreSQL nyata, sehingga keduanya dijamin berperilaku identik. Uji persistensi

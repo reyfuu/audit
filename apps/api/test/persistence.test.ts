@@ -1,3 +1,4 @@
+import '../test/setup-dev-tokens'
 /**
  * Bukti persistensi lintas restart.
  *

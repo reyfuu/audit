@@ -1,23 +1,40 @@
 /**
- * Guard autentikasi dan scope organisasi (TRD §6, FRD §1).
+ * Guard autentikasi (TRD §6, FR-03).
  *
- * Token di sini disederhanakan: `Bearer user:<id>`. Di produksi diganti
- * verifikasi JWT, tetapi bentuk context yang disuntikkan tetap sama sehingga
- * modul di hilirnya tidak perlu berubah.
+ * Access token adalah JWT HS256 berumur 15 menit yang diterbitkan modul auth.
+ *
+ * Untuk demo dan uji, format `Bearer user:<id>` masih diterima, TETAPI hanya
+ * bila `ALLOW_DEV_TOKENS` bernilai '1'. Di produksi jalur ini mati, sehingga
+ * mengetahui id auditor saja tidak cukup untuk masuk.
  */
 import { Elysia } from 'elysia'
+import { verifyAccessToken } from './auth'
 import { err } from './errors'
 
 export interface AuthUser {
   id: string
+  role?: string
 }
 
-export function parseBearer(header: string | undefined): AuthUser | null {
+/** Token pengembangan hanya aktif bila diizinkan secara eksplisit. */
+export function devTokensAllowed(): boolean {
+  if (process.env.NODE_ENV === 'production') return false
+  return process.env.ALLOW_DEV_TOKENS === '1'
+}
+
+export function parseBearer(header: string | undefined, nowMs = Date.now()): AuthUser | null {
   if (!header?.startsWith('Bearer ')) return null
   const token = header.slice(7).trim()
-  if (!token.startsWith('user:')) return null
-  const id = token.slice(5).trim()
-  return id ? { id } : null
+  if (!token) return null
+
+  const claims = verifyAccessToken(token, nowMs)
+  if (claims) return { id: claims.sub, ...(claims.role ? { role: claims.role } : {}) }
+
+  if (devTokensAllowed() && token.startsWith('user:')) {
+    const id = token.slice(5).trim()
+    return id ? { id } : null
+  }
+  return null
 }
 
 export const authGuard = new Elysia({ name: 'authGuard' })
@@ -27,7 +44,7 @@ export const authGuard = new Elysia({ name: 'authGuard' })
   })
 
 /**
- * Catatan model v2: tidak ada lagi guard "org scope" berbasis header.
+ * Catatan model v2: tidak ada guard "org scope" berbasis header.
  * Auditor di-scope lewat `owner_auditor_id` di layer repository, dan responden
  * di-scope lewat token undangan. Keduanya menghindari header yang bisa dipalsu.
  */

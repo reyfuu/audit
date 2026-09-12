@@ -1,3 +1,4 @@
+import '../test/setup-dev-tokens'
 /**
  * Uji end-to-end jalur bisnis v2: auditor menerbitkan undangan, owner memindai
  * QR dan mengisi form, lalu hasil diterbitkan.

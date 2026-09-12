@@ -46,11 +46,15 @@ security:
 
 paths:
   # ───────────────────────── Auth ─────────────────────────
-  /auth/register:
-    x-status: planned
+  /auth/request-otp:
+    x-status: implemented
     post:
       tags: [Auth]
-      summary: Daftar dengan email, kirim OTP
+      summary: Minta kode OTP untuk login auditor (FR-01)
+      description: |
+        Hanya email yang sudah menjadi auditor atau sedang diundang yang
+        benar-benar menerima kode. Respons selalu 202 dengan bentuk yang sama,
+        agar tidak menjadi orakel daftar email auditor.
       security: []
       requestBody:
         required: true
@@ -61,16 +65,22 @@ paths:
               required: [email]
               properties:
                 email: { type: string, format: email }
-                name: { type: string, maxLength: 120 }
       responses:
-        '202': { description: OTP terkirim, content: { application/json: { schema: { $ref: '#/components/schemas/OtpChallenge' } } } }
-        '429': { $ref: '#/components/responses/RateLimited' }
+        '202':
+          description: Diterima
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  challenge_id: { type: string, format: uuid }
+                  expires_at: { type: string, format: date-time }
 
   /auth/verify-otp:
-    x-status: planned
+    x-status: implemented
     post:
       tags: [Auth]
-      summary: Verifikasi OTP dan terbitkan token
+      summary: Verifikasi OTP dan terbitkan sesi (FR-01, FR-03)
       security: []
       requestBody:
         required: true
@@ -82,135 +92,90 @@ paths:
               properties:
                 challenge_id: { type: string, format: uuid }
                 code: { type: string, pattern: '^[0-9]{6}$' }
+                name: { type: string, maxLength: 120 }
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/TokenPair' } } } }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '429': { $ref: '#/components/responses/RateLimited' }
 
-  /auth/google:
-    x-status: planned
-    post:
-      tags: [Auth]
-      summary: Login via Google OAuth2 id_token
-      security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { type: object, required: [id_token], properties: { id_token: { type: string } } }
-      responses:
-        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/TokenPair' } } } }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-
   /auth/refresh:
-    x-status: planned
+    x-status: implemented
     post:
       tags: [Auth]
-      summary: Rotasi refresh token
+      summary: Rotasi refresh token (FR-03)
+      description: |
+        Refresh token bersifat sekali pakai. Pemakaian ulang dianggap indikasi
+        token dicuri, sehingga seluruh keluarga token dicabut sekaligus.
       security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { type: object, required: [refresh_token], properties: { refresh_token: { type: string } } }
-      responses:
-        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/TokenPair' } } } }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-
-  /auth/logout:
-    x-status: planned
-    post:
-      tags: [Auth]
-      summary: Cabut refresh token
-      responses: { '204': { description: No Content } }
-
-  /me:
-    x-status: planned
-    get:
-      tags: [Auth]
-      summary: Profil user dan keanggotaan organisasi
-      responses:
-        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Me' } } } }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-
-  # ─────────────────────── Organizations ───────────────────────
-  /companies:
-    x-status: implemented
-    get:
-      tags: [Companies]
-      summary: Daftar organisasi milik user
-      responses:
-        '200':
-          description: OK
-          content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Company' } } } }
-    post:
-      tags: [Companies]
-      summary: Buat organisasi
-      requestBody:
-        required: true
-        content: { application/json: { schema: { $ref: '#/components/schemas/CompanyInput' } } }
-      responses:
-        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Company' } } } }
-        '422': { $ref: '#/components/responses/UnprocessableEntity' }
-
-  /companies/{companyId}:
-    x-status: implemented
-    parameters: [{ $ref: '#/components/parameters/CompanyIdPath' }]
-    get:
-      tags: [Companies]
-      summary: Detail organisasi
-      responses:
-        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Company' } } } }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-    patch:
-      tags: [Companies]
-      summary: Perbarui profil organisasi
-      requestBody:
-        required: true
-        content: { application/json: { schema: { $ref: '#/components/schemas/CompanyInput' } } }
-      responses:
-        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Company' } } } }
-        '403': { $ref: '#/components/responses/Forbidden' }
-
-  /companies/{companyId}/members:
-    x-status: planned
-    parameters: [{ $ref: '#/components/parameters/CompanyIdPath' }]
-    get:
-      tags: [Companies]
-      summary: Daftar anggota
-      responses:
-        '200':
-          description: OK
-          content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Member' } } } }
-    post:
-      tags: [Companies]
-      summary: Undang anggota
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [email, role]
+              required: [refresh_token]
+              properties:
+                refresh_token: { type: string }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/TokenPair' } } } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /auth/logout:
+    x-status: implemented
+    post:
+      tags: [Auth]
+      summary: Cabut sesi (FR-03)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token: { type: string }
+      responses:
+        '204': { description: No Content }
+
+  /auth/me:
+    x-status: implemented
+    get:
+      tags: [Auth]
+      summary: Profil auditor yang sedang masuk
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Me' } } } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /auth/invites:
+    x-status: implemented
+    post:
+      tags: [Auth]
+      summary: Undang anggota tim auditor (FR-04)
+      description: Hanya `auditor_admin` dan `sysadmin` yang boleh mengundang.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
               properties:
                 email: { type: string, format: email }
-                role: { $ref: '#/components/schemas/Role' }
+                role: { type: string, enum: [auditor, auditor_admin] }
       responses:
-        '201': { description: Undangan terkirim, content: { application/json: { schema: { $ref: '#/components/schemas/Member' } } } }
+        '201':
+          description: Undangan dibuat
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  email: { type: string }
+                  role: { type: string }
+                  expires_at: { type: string, format: date-time }
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
-
-  # ─────────────────────── Questionnaire ───────────────────────
-  /questionnaires/active:
-    x-status: planned
-    get:
-      tags: [Questionnaire]
-      summary: Ambil kuesioner aktif (dimensi, pertanyaan, opsi, bobot)
-      parameters:
-        - { name: type, in: query, schema: { $ref: '#/components/schemas/AssessmentType' } }
-      responses:
-        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Questionnaire' } } } }
 
   # ─────────────────────── Invitations (auditor) ───────────────────────
   /invitations:

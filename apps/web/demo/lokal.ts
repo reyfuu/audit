@@ -20,7 +20,16 @@ const WEB_BASE = process.env.PUBLIC_BASE_URL ?? `http://localhost:${WEB_PORT}`
 
 // Postgres bila DATABASE_URL ada, selain itu memori.
 const storage = createStorage()
-const { app: api, repo } = createApp({ repo: storage.repo, baseUrl: WEB_BASE })
+/** Kode OTP demo ditampung di sini agar dapat dicetak ke terminal. */
+const otpTerakhir = new Map<string, string>()
+const { app: api, repo } = createApp({
+  repo: storage.repo,
+  baseUrl: WEB_BASE,
+  sendOtp: (email, code) => {
+    otpTerakhir.set(email, code)
+    console.log(`\n  [OTP] ${email} → ${code}\n`)
+  },
+})
 api.listen(API_PORT)
 
 // ── Akun demo; dipakai ulang bila sudah ada agar restart tidak menggandakan.
@@ -40,11 +49,35 @@ async function ambilAtauBuatAuditor() {
   return repo.createAuditor({ email, name: 'Dimas Auditor', role: 'auditor_admin' })
 }
 
-/** Pemanggil API untuk dashboard; identitas auditor demo disuntikkan di sini. */
+/**
+ * Sesi auditor demo diperoleh lewat alur login OTP yang sungguhan, bukan
+ * token pintasan, sehingga jalur autentikasi ikut tercoba setiap kali demo
+ * dijalankan.
+ */
+async function masukSebagaiAuditor(): Promise<string> {
+  const minta = await api.handle(new Request(`http://localhost:${API_PORT}/auth/request-otp`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: auditor.email }),
+  }))
+  const { challenge_id } = await minta.json() as { challenge_id: string }
+  const code = otpTerakhir.get(auditor.email)!
+  const verif = await api.handle(new Request(`http://localhost:${API_PORT}/auth/verify-otp`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ challenge_id, code }),
+  }))
+  const sesi = await verif.json() as { access_token: string }
+  return sesi.access_token
+}
+
+const accessToken = await masukSebagaiAuditor()
+
+/** Pemanggil API untuk dashboard; memakai access token hasil login. */
 const callApi = (path: string, init: RequestInit = {}) =>
   api.handle(new Request(`http://localhost:${API_PORT}${path}`, {
     ...init,
-    headers: { ...(init.headers ?? {}), authorization: `Bearer user:${auditor.id}` },
+    headers: { ...(init.headers ?? {}), authorization: `Bearer ${accessToken}` },
   }))
 
 /** Pemanggil API untuk form responden; tanpa kredensial, sesuai model token. */
@@ -174,8 +207,9 @@ ${garis}
 
   AKUN DEMO
     Auditor   : ${auditor.name} <${auditor.email}>
-    Catatan   : autentikasi nyata belum dipasang (FR-01..FR-04).
-                Sesi auditor sudah aktif otomatis di dashboard demo ini.
+    Login     : email + OTP (FR-01). Demo sudah masuk otomatis lewat alur
+                yang sama; kode OTP dicetak ke terminal ini.
+                Coba sendiri: POST /auth/request-otp lalu /auth/verify-otp.
 
   BUKA DASHBOARD AUDITOR
     ${WEB_BASE}/app

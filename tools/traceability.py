@@ -26,7 +26,10 @@ TESTS = "\n".join(
 # Bukti implementasi per FR: penanda yang harus ada di kode sumber.
 # None berarti sengaja belum diimplementasikan pada tahap ini.
 IMPL_MARKERS = {
-    "FR-01": None, "FR-02": None, "FR-03": None, "FR-04": None,
+    "FR-01": ["request-otp", "verify-otp", "hashOtp"],
+    "FR-02": None,  # Google OAuth: butuh kredensial eksternal, ditunda
+    "FR-03": ["verifyAccessToken", "hashRefreshToken", "revokeSessionFamily"],
+    "FR-04": ["/invites", "createAuditorInvite"],
     "FR-05": ["createCompany"],
     "FR-06": ["listCompanies", "owner_auditor_id"],
     "FR-07": ["createAssessment", "questionnaire_version"],
@@ -61,6 +64,9 @@ TEST_MARKERS["FR-07"] = ["FR-23"]  # assessment dibuat lewat penerbitan undangan
 TEST_MARKERS["FR-10"] = ["FR-26"]
 TEST_MARKERS["FR-14"] = ["rekomendasi"]
 TEST_MARKERS["FR-15"] = ["benchmark"]
+TEST_MARKERS["FR-01"] = ["FR-01"]
+TEST_MARKERS["FR-03"] = ["FR-03"]
+TEST_MARKERS["FR-04"] = ["FR-04"]
 
 rows = []
 for fr in sorted(IMPL_MARKERS, key=lambda x: int(x[3:])):
@@ -98,6 +104,9 @@ def has_route(p: str) -> bool:
     if p.startswith("/invitations/"):
         seg = p.split("/")[-1]
         return (f"'/:id/{seg}'" in SRC) or (seg == "{invitationId}" and "'/:id'" in SRC)
+    if p.startswith("/auth/"):
+        seg = p.split("/")[-1]
+        return f"'/{seg}'" in SRC
     if p == "/companies":
         return "prefix: '/companies'" in SRC
     if p.startswith("/companies/"):

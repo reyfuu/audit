@@ -1,3 +1,4 @@
+import '../../api/test/setup-dev-tokens'
 /**
  * Uji dashboard auditor (FR-23, FR-24, FR-27, FR-29).
  * Menelusuri HTML seperti browser, sama seperti uji form responden.

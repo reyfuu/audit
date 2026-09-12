@@ -1,3 +1,4 @@
+import '../../api/test/setup-dev-tokens'
 /**
  * Uji form responden dengan menelusuri HTML seperti browser tanpa JavaScript.
  *

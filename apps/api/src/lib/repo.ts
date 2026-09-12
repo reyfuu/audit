@@ -86,10 +86,58 @@ export interface InvitationRow {
  * penyimpanan nyata (Postgres, ADR-008) dapat dipasang tanpa mengubah modul
  * HTTP sedikit pun.
  */
+export interface OtpChallengeRow {
+  id: string
+  email: string
+  code_hash: string
+  attempts: number
+  consumed_at: string | null
+  expires_at: string
+  created_at: string
+}
+
+export interface SessionRow {
+  id: string
+  auditor_id: string
+  token_hash: string
+  /** Seluruh rantai rotasi berbagi nilai ini, untuk pencabutan massal. */
+  family_id: string
+  used_at: string | null
+  revoked_at: string | null
+  expires_at: string
+}
+
+export interface AuditorInviteRow {
+  id: string
+  email: string
+  role: AuditorRole
+  invited_by: string | null
+  accepted_at: string | null
+  expires_at: string
+}
+
 export interface Repo {
   // auditor
   createAuditor(input: Omit<AuditorRow, 'id'>): Promise<AuditorRow>
   getAuditor(id: string): Promise<AuditorRow | undefined>
+  getAuditorByEmail(email: string): Promise<AuditorRow | undefined>
+
+  // otp
+  createOtpChallenge(input: Omit<OtpChallengeRow, 'created_at'>): Promise<OtpChallengeRow>
+  getOtpChallenge(id: string): Promise<OtpChallengeRow | undefined>
+  saveOtpChallenge(row: OtpChallengeRow): Promise<void>
+
+  // sesi
+  createSession(input: SessionRow): Promise<SessionRow>
+  findSessionByTokenHash(hash: string): Promise<SessionRow | undefined>
+  saveSession(row: SessionRow): Promise<void>
+  /** Mencabut seluruh keluarga token; dipakai saat terdeteksi pemakaian ulang. */
+  revokeSessionFamily(familyId: string, at: string): Promise<void>
+
+  // undangan auditor
+  createAuditorInvite(input: AuditorInviteRow): Promise<AuditorInviteRow>
+  getAuditorInviteByEmail(email: string): Promise<AuditorInviteRow | undefined>
+  saveAuditorInvite(row: AuditorInviteRow): Promise<void>
 
   // perusahaan klien
   createCompany(input: Omit<CompanyRow, 'id' | 'created_at'>): Promise<CompanyRow>
@@ -115,6 +163,10 @@ export interface Repo {
 
 export function createMemoryRepo(): Repo {
   const auditors = new Map<string, AuditorRow>()
+  const otps = new Map<string, OtpChallengeRow>()
+  const sessions = new Map<string, SessionRow>()
+  const sessionsByHash = new Map<string, string>()
+  const invites = new Map<string, AuditorInviteRow>()
   const companies = new Map<string, CompanyRow>()
   const assessments = new Map<string, AssessmentRow>()
   const invitations = new Map<string, InvitationRow>()
@@ -130,6 +182,48 @@ export function createMemoryRepo(): Repo {
       return row
     },
     async getAuditor(id) { return auditors.get(id) },
+    async getAuditorByEmail(email) {
+      const e = email.toLowerCase()
+      for (const a of auditors.values()) if (a.email.toLowerCase() === e) return a
+      return undefined
+    },
+
+    async createOtpChallenge(input) {
+      const row: OtpChallengeRow = { ...input, created_at: new Date().toISOString() }
+      otps.set(row.id, row)
+      return row
+    },
+    async getOtpChallenge(id) { return otps.get(id) },
+    async saveOtpChallenge(row) { otps.set(row.id, row) },
+
+    async createSession(input) {
+      sessions.set(input.id, input)
+      sessionsByHash.set(input.token_hash, input.id)
+      return input
+    },
+    async findSessionByTokenHash(hash) {
+      const id = sessionsByHash.get(hash)
+      return id ? sessions.get(id) : undefined
+    },
+    async saveSession(row) {
+      sessions.set(row.id, row)
+      sessionsByHash.set(row.token_hash, row.id)
+    },
+    async revokeSessionFamily(familyId, at) {
+      for (const s of sessions.values()) {
+        if (s.family_id === familyId && !s.revoked_at) {
+          s.revoked_at = at
+          sessions.set(s.id, s)
+        }
+      }
+    },
+
+    async createAuditorInvite(input) {
+      invites.set(input.email.toLowerCase(), input)
+      return input
+    },
+    async getAuditorInviteByEmail(email) { return invites.get(email.toLowerCase()) },
+    async saveAuditorInvite(row) { invites.set(row.email.toLowerCase(), row) },
 
     async createCompany(input) {
       const row: CompanyRow = { ...input, id: crypto.randomUUID(), created_at: new Date().toISOString() }

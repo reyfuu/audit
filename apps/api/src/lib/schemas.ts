@@ -57,6 +57,19 @@ export const Company = t.Composite([
   }),
 ])
 
+export const TokenPair = t.Object({
+  access_token: t.String(),
+  refresh_token: t.String(),
+  expires_in: t.Integer({ description: 'Umur access token dalam detik' }),
+})
+
+export const Me = t.Object({
+  id: t.String(),
+  email: t.String(),
+  name: t.String(),
+  role: t.String(),
+})
+
 export const AssessmentType = t.Literal('FULL')
 
 export const InvitationStatus = t.Union([

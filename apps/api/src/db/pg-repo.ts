@@ -8,13 +8,14 @@
  * Antarmuka `Repo` dibuat asinkron sejak awal supaya penyimpanan yang benar-benar
  * melakukan I/O dapat dipasang tanpa mengubah modul HTTP.
  */
-import { and, desc, eq, inArray, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { drizzle, type PostgresJsDatabase } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
 import type { Answer } from '@siapai/scoring'
 import * as s from './schema'
 import type {
-  AssessmentRow, AuditorRow, CompanyRow, InvitationRow, Repo,
+  AssessmentRow, AuditorInviteRow, AuditorRow, CompanyRow, InvitationRow,
+  OtpChallengeRow, Repo, SessionRow,
 } from '../lib/repo'
 
 export type Db = PostgresJsDatabase<typeof s>
@@ -88,6 +89,29 @@ function toInvitation(r: InvitationSelect): InvitationRow {
   }
 }
 
+function toOtp(r: typeof s.otpChallenges.$inferSelect): OtpChallengeRow {
+  return {
+    id: r.id, email: r.email, code_hash: r.codeHash, attempts: r.attempts,
+    consumed_at: iso(r.consumedAt), expires_at: r.expiresAt.toISOString(),
+    created_at: r.createdAt.toISOString(),
+  }
+}
+
+function toSession(r: typeof s.sessions.$inferSelect): SessionRow {
+  return {
+    id: r.id, auditor_id: r.auditorId, token_hash: r.tokenHash, family_id: r.familyId,
+    used_at: iso(r.usedAt), revoked_at: iso(r.revokedAt),
+    expires_at: r.expiresAt.toISOString(),
+  }
+}
+
+function toInvite(r: typeof s.auditorInvites.$inferSelect): AuditorInviteRow {
+  return {
+    id: r.id, email: r.email, role: r.role, invited_by: r.invitedBy,
+    accepted_at: iso(r.acceptedAt), expires_at: r.expiresAt.toISOString(),
+  }
+}
+
 /** Status yang masih memungkinkan responden mengisi form. */
 const AKTIF = ['SENT', 'OPENED', 'IN_PROGRESS'] as const
 
@@ -110,6 +134,94 @@ export function createPgRepo(db: Db): Repo {
     async getAuditor(id) {
       const [r] = await db.select().from(s.auditors).where(eq(s.auditors.id, id))
       return r ? { id: r.id, email: r.email, name: r.name, role: r.role } : undefined
+    },
+
+    async getAuditorByEmail(email) {
+      const [r] = await db.select().from(s.auditors)
+        .where(eq(s.auditors.email, email.toLowerCase()))
+      return r ? { id: r.id, email: r.email, name: r.name, role: r.role } : undefined
+    },
+
+    async createOtpChallenge(input) {
+      const [r] = await db.insert(s.otpChallenges).values({
+        id: input.id,
+        email: input.email,
+        codeHash: input.code_hash,
+        attempts: input.attempts,
+        consumedAt: input.consumed_at ? new Date(input.consumed_at) : null,
+        expiresAt: new Date(input.expires_at),
+      }).returning()
+      return toOtp(r!)
+    },
+
+    async getOtpChallenge(id) {
+      const [r] = await db.select().from(s.otpChallenges).where(eq(s.otpChallenges.id, id))
+      return r ? toOtp(r) : undefined
+    },
+
+    async saveOtpChallenge(row) {
+      await db.update(s.otpChallenges).set({
+        attempts: row.attempts,
+        consumedAt: row.consumed_at ? new Date(row.consumed_at) : null,
+      }).where(eq(s.otpChallenges.id, row.id))
+    },
+
+    async createSession(input) {
+      const [r] = await db.insert(s.sessions).values({
+        id: input.id,
+        auditorId: input.auditor_id,
+        tokenHash: input.token_hash,
+        familyId: input.family_id,
+        usedAt: input.used_at ? new Date(input.used_at) : null,
+        revokedAt: input.revoked_at ? new Date(input.revoked_at) : null,
+        expiresAt: new Date(input.expires_at),
+      }).returning()
+      return toSession(r!)
+    },
+
+    async findSessionByTokenHash(hash) {
+      const [r] = await db.select().from(s.sessions).where(eq(s.sessions.tokenHash, hash))
+      return r ? toSession(r) : undefined
+    },
+
+    async saveSession(row) {
+      await db.update(s.sessions).set({
+        usedAt: row.used_at ? new Date(row.used_at) : null,
+        revokedAt: row.revoked_at ? new Date(row.revoked_at) : null,
+      }).where(eq(s.sessions.id, row.id))
+    },
+
+    async revokeSessionFamily(familyId, at) {
+      await db.update(s.sessions).set({ revokedAt: new Date(at) })
+        .where(and(eq(s.sessions.familyId, familyId), isNull(s.sessions.revokedAt)))
+    },
+
+    async createAuditorInvite(input) {
+      const [r] = await db.insert(s.auditorInvites).values({
+        id: input.id,
+        email: input.email.toLowerCase(),
+        role: input.role,
+        invitedBy: input.invited_by,
+        acceptedAt: input.accepted_at ? new Date(input.accepted_at) : null,
+        expiresAt: new Date(input.expires_at),
+      }).onConflictDoUpdate({
+        target: s.auditorInvites.email,
+        set: { role: input.role, expiresAt: new Date(input.expires_at), acceptedAt: null },
+      }).returning()
+      return toInvite(r!)
+    },
+
+    async getAuditorInviteByEmail(email) {
+      const [r] = await db.select().from(s.auditorInvites)
+        .where(eq(s.auditorInvites.email, email.toLowerCase()))
+      return r ? toInvite(r) : undefined
+    },
+
+    async saveAuditorInvite(row) {
+      await db.update(s.auditorInvites).set({
+        acceptedAt: row.accepted_at ? new Date(row.accepted_at) : null,
+        role: row.role,
+      }).where(eq(s.auditorInvites.id, row.id))
     },
 
     async createCompany(input) {

@@ -173,7 +173,7 @@ check("R18c","Token tidak valid/dicabut mengembalikan 404 netral (FR-25 AC3)", o
 # ── R19 model auth v2: jalur responden /f/{token} tidak memakai Bearer
 # (token undangan adalah kredensialnya), sisanya wajib Bearer.
 # /auth/logout dan /me tetap butuh Bearer meski berada di bawah /auth.
-AUTHENTICATED_AUTH_PATHS = {"/auth/logout", "/me"}
+AUTHENTICATED_AUTH_PATHS = {"/auth/me", "/auth/invites"}
 token_auth, priv_ok = [], []
 for path, item in SPEC["paths"].items():
     for method, op in item.items():
@@ -186,11 +186,11 @@ for path, item in SPEC["paths"].items():
 check("R19a","Jalur responden /f/{token} memakai security: [] (FR-25 AC4)", not token_auth,
       f"pelanggaran={token_auth}")
 check("R19b","Endpoint auditor tidak melewati auth", not priv_ok, f"pelanggaran={priv_ok}")
-check("R19c","/auth/logout & /me tetap mewajibkan auth",
+check("R19c","/auth/me & /auth/invites tetap mewajibkan auth",
       all(SPEC["paths"][p][m].get("security") != []
           for p in AUTHENTICATED_AUTH_PATHS for m in SPEC["paths"][p]
           if m in ("get","post")),
-      "logout dan /me terlindungi")
+      "endpoint profil dan undangan tim terlindungi")
 check("R19d","Endpoint QR memerlukan auth auditor (FR-24 AC4)",
       all(SPEC["paths"][p]["get"].get("security") != []
           for p in ("/invitations/{invitationId}/qr.png", "/invitations/{invitationId}/qr.svg")),

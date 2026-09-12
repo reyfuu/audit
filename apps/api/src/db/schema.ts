@@ -110,6 +110,52 @@ export const invitations = pgTable('invitations', {
   index('invitations_company_idx').on(t.companyId, t.status),
 ])
 
+/**
+ * Tantangan OTP untuk login auditor (FR-01).
+ * Kode disimpan sebagai hash agar bocornya basis data tidak langsung memberi akses.
+ */
+export const otpChallenges = pgTable('otp_challenges', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  email: text('email').notNull(),
+  codeHash: text('code_hash').notNull(),
+  attempts: integer('attempts').notNull().default(0),
+  consumedAt: timestamp('consumed_at', { withTimezone: true }),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index('otp_email_idx').on(t.email, t.createdAt)])
+
+/**
+ * Refresh token rotatif (FR-03).
+ * Menyimpan hash; token yang sudah dipakai ditandai agar pemakaian ulang
+ * terdeteksi sebagai indikasi pencurian token.
+ */
+export const sessions = pgTable('sessions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  auditorId: uuid('auditor_id').notNull()
+    .references(() => auditors.id, { onDelete: 'cascade' }),
+  tokenHash: text('token_hash').notNull(),
+  /** Keluarga token: seluruh rantai rotasi berbagi nilai ini. */
+  familyId: uuid('family_id').notNull(),
+  usedAt: timestamp('used_at', { withTimezone: true }),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('sessions_token_hash_key').on(t.tokenHash),
+  index('sessions_family_idx').on(t.familyId),
+])
+
+/** Email yang boleh mendaftar sebagai auditor (FR-01 AC3). */
+export const auditorInvites = pgTable('auditor_invites', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  email: text('email').notNull(),
+  role: auditorRole('role').notNull().default('auditor'),
+  invitedBy: uuid('invited_by').references(() => auditors.id, { onDelete: 'set null' }),
+  acceptedAt: timestamp('accepted_at', { withTimezone: true }),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [uniqueIndex('auditor_invites_email_key').on(t.email)])
+
 export const auditLogs = pgTable('audit_logs', {
   id: uuid('id').primaryKey().defaultRandom(),
   actorId: uuid('actor_id'),
