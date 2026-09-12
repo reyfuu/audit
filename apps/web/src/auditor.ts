@@ -172,6 +172,11 @@ export function auditorModule({ api, publicBase }: AuditorDeps) {
         `<main class="wrap-wide"><div class="card"><h1>Undangan tidak ditemukan</h1></div></main>`), 404)
       const inv = await res.json() as Invitation
       const link = (inv as Invitation & { invitation_url?: string }).invitation_url
+      // Tautan bagikan hanya relevan setelah laporan ada.
+      const bagikan = inv.status === 'SCORED'
+        ? ((await (await api(`/assessments/${inv.assessment_id}/share-links`)).json())
+            .items as ShareItem[])
+        : []
 
       return html(page(`Undangan ${inv.company_name}`, `
 <main class="wrap-wide">
@@ -207,13 +212,38 @@ export function auditorModule({ api, publicBase }: AuditorDeps) {
   </div>
 
   ${inv.status === 'SCORED'
-    ? `<div class="card"><h2>Hasil sudah tersedia</h2>
+    ? `<div class="card">
+        <h2>Hasil sudah tersedia</h2>
         <p class="muted">Responden telah mengirim jawaban dan laporan sudah dihitung.</p>
-        ${link
-          ? `<a class="btn btn-primary" href="${esc(link)}/hasil"
-                style="display:inline-block;line-height:48px;text-decoration:none;
-                       text-align:center;max-width:260px">Lihat laporan</a>`
-          : `<p class="muted">Terbitkan ulang token untuk memperoleh tautan laporan.</p>`}
+        <div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:12px">
+          ${link
+            ? `<a class="btn btn-primary" href="${esc(link)}/hasil"
+                  style="line-height:48px;text-decoration:none;text-align:center;max-width:240px">
+                 Lihat laporan</a>`
+            : ''}
+          <a class="btn" href="/app/undangan/${esc(inv.id)}/pdf"
+             style="line-height:48px;text-decoration:none;text-align:center;max-width:240px">
+            Unduh PDF</a>
+          <form method="post" action="/app/undangan/${esc(inv.id)}/bagikan" style="margin:0">
+            <button class="btn" type="submit" style="min-width:200px">Buat tautan bagikan</button>
+          </form>
+        </div>
+        ${bagikan.length
+          ? `<h3 style="font-size:16px;margin:20px 0 8px">Tautan bagikan</h3>
+             ${bagikan.map((b) => `
+               <div style="border-top:1px solid var(--border);padding:12px 0">
+                 ${b.url ? `<div class="copybox">${esc(b.url)}</div>` : ''}
+                 <p class="muted" style="margin:4px 0">
+                   ${b.revoked ? 'Dicabut' : `Berlaku sampai ${esc(tanggal(b.expires_at))}`}
+                   · dilihat ${b.view_count}x
+                   ${b.anonymize ? ' · nama disembunyikan' : ''}
+                 </p>
+                 ${b.revoked ? '' : `<form method="post"
+                    action="/app/bagikan/${esc(b.id)}/cabut" style="margin:0">
+                   <button class="btn" type="submit" style="min-width:140px">Cabut</button>
+                 </form>`}
+               </div>`).join('')}`
+          : ''}
        </div>`
     : ''}
 </main>`))
@@ -258,6 +288,40 @@ export function auditorModule({ api, publicBase }: AuditorDeps) {
       return redirect(`/app/undangan/${inv.id}`)
     }, { params: t.Object({ id: t.String() }) })
 
+    // ── FR-18 buat tautan bagikan dari dashboard
+    .post('/app/undangan/:id/bagikan', async ({ params }) => {
+      const inv = await (await api(`/invitations/${params.id}`)).json() as Invitation
+      await api(`/assessments/${inv.assessment_id}/share-links`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({}),
+      })
+      return redirect(`/app/undangan/${params.id}`)
+    }, { params: t.Object({ id: t.String() }) })
+
+    .post('/app/bagikan/:id/cabut', async ({ params, headers }) => {
+      await api(`/share-links/${params.id}`, { method: 'DELETE' })
+      // Kembali ke halaman asal agar konteks auditor tidak hilang.
+      return redirect(headers.referer ?? '/app')
+    }, { params: t.Object({ id: t.String() }) })
+
+    // ── FR-17 unduh PDF lewat dashboard
+    .get('/app/undangan/:id/pdf', async ({ params, set }) => {
+      const inv = await (await api(`/invitations/${params.id}`)).json() as Invitation
+      const res = await api(`/assessments/${inv.assessment_id}/report/pdf`, { method: 'POST' })
+      if (!res.ok) {
+        set.status = res.status
+        return html(page('Gagal membuat PDF', `<main class="wrap-wide"><div class="card">
+          <h1>PDF belum dapat dibuat</h1>
+          <p class="muted">Perender PDF tidak tersedia di lingkungan ini.</p>
+          <p><a href="/app/undangan/${esc(params.id)}">Kembali</a></p></div></main>`), res.status)
+      }
+      set.headers['content-type'] = 'application/pdf'
+      set.headers['content-disposition'] =
+        res.headers.get('content-disposition') ?? 'attachment; filename="laporan.pdf"'
+      return new Response(await res.arrayBuffer())
+    }, { params: t.Object({ id: t.String() }) })
+
     .post('/app/perusahaan', async ({ body }) => {
       const f = body as Record<string, string>
       await api('/companies', {
@@ -273,6 +337,7 @@ export function auditorModule({ api, publicBase }: AuditorDeps) {
 
 interface Invitation {
   id: string
+  assessment_id: string
   company_name: string
   status: string
   recipient_name?: string
@@ -280,6 +345,18 @@ interface Invitation {
   progress: { answered: number; total_visible: number; percent: number }
 }
 interface Company { id: string; name: string }
+
+interface ShareItem {
+  id: string
+  url: string | null
+  expires_at: string
+  anonymize: boolean
+  revoked: boolean
+  view_count: number
+}
+
+const tanggal = (iso: string) =>
+  new Date(iso).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
 
 const html = (body: string, status = 200) =>
   new Response(body, {

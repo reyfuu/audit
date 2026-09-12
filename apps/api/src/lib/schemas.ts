@@ -264,11 +264,38 @@ export const RecommendationBundle = t.Object({
   }),
 })
 
-export const QuickCheckResult = t.Object({
+export const _unused_QuickCheckResult = t.Object({
   total_score: t.Number(),
   level: t.Integer({ minimum: 1, maximum: 5 }),
   verdict: Verdict,
   confidence: t.Literal('LOW'),
   teaser: t.String(),
   upgrade_cta: t.String(),
+})
+
+// ── Laporan: tautan bagikan & PDF (FR-17, FR-18)
+
+export const ShareLink = t.Object({
+  id: t.String(),
+  url: t.String(),
+  expires_at: t.String(),
+  anonymize: t.Boolean(),
+  view_count: t.Integer(),
+})
+
+export const ShareLinkListItem = t.Object({
+  id: t.String(),
+  /** null bila sudah dicabut atau kedaluwarsa. */
+  url: t.Union([t.String(), t.Null()]),
+  expires_at: t.String(),
+  anonymize: t.Boolean(),
+  revoked: t.Boolean(),
+  view_count: t.Integer(),
+})
+
+export const SharedReport = t.Object({
+  /** null bila tautan dibuat dengan opsi anonymize. */
+  company_name: t.Union([t.String(), t.Null()]),
+  result: ScoreResult,
+  recommendations: RecommendationBundle,
 })

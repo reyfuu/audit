@@ -116,6 +116,18 @@ export interface AuditorInviteRow {
   expires_at: string
 }
 
+export interface ShareLinkRow {
+  id: string
+  assessment_id: string
+  token_hash: string
+  token_sealed: string
+  anonymize: boolean
+  created_by: string | null
+  expires_at: string
+  revoked_at: string | null
+  view_count: number
+}
+
 export interface Repo {
   // auditor
   createAuditor(input: Omit<AuditorRow, 'id'>): Promise<AuditorRow>
@@ -134,6 +146,13 @@ export interface Repo {
   /** Mencabut seluruh keluarga token; dipakai saat terdeteksi pemakaian ulang. */
   revokeSessionFamily(familyId: string, at: string): Promise<void>
 
+  // tautan bagikan laporan (FR-18)
+  createShareLink(input: ShareLinkRow): Promise<ShareLinkRow>
+  findShareLinkByTokenHash(hash: string): Promise<ShareLinkRow | undefined>
+  getShareLink(id: string): Promise<ShareLinkRow | undefined>
+  listShareLinks(assessmentId: string): Promise<ShareLinkRow[]>
+  saveShareLink(row: ShareLinkRow): Promise<void>
+
   // undangan auditor
   createAuditorInvite(input: AuditorInviteRow): Promise<AuditorInviteRow>
   getAuditorInviteByEmail(email: string): Promise<AuditorInviteRow | undefined>
@@ -141,6 +160,8 @@ export interface Repo {
 
   // perusahaan klien
   createCompany(input: Omit<CompanyRow, 'id' | 'created_at'>): Promise<CompanyRow>
+  /** Tanpa filter kepemilikan; hanya untuk menampilkan nama pada jalur bertoken. */
+  getCompanyById(id: string): Promise<CompanyRow | undefined>
   /** Perusahaan pemilik sebuah undangan, dipakai untuk menampilkan nama. */
   getCompanyOfInvitation(inv: InvitationRow): Promise<CompanyRow | undefined>
   /** Ber-scope auditor: perusahaan milik auditor lain dianggap tidak ada. */
@@ -167,6 +188,8 @@ export function createMemoryRepo(): Repo {
   const sessions = new Map<string, SessionRow>()
   const sessionsByHash = new Map<string, string>()
   const invites = new Map<string, AuditorInviteRow>()
+  const shares = new Map<string, ShareLinkRow>()
+  const sharesByHash = new Map<string, string>()
   const companies = new Map<string, CompanyRow>()
   const assessments = new Map<string, AssessmentRow>()
   const invitations = new Map<string, InvitationRow>()
@@ -218,6 +241,24 @@ export function createMemoryRepo(): Repo {
       }
     },
 
+    async createShareLink(input) {
+      shares.set(input.id, input)
+      sharesByHash.set(input.token_hash, input.id)
+      return input
+    },
+    async findShareLinkByTokenHash(hash) {
+      const id = sharesByHash.get(hash)
+      return id ? shares.get(id) : undefined
+    },
+    async getShareLink(id) { return shares.get(id) },
+    async listShareLinks(assessmentId) {
+      return [...shares.values()].filter((s) => s.assessment_id === assessmentId)
+    },
+    async saveShareLink(row) {
+      shares.set(row.id, row)
+      sharesByHash.set(row.token_hash, row.id)
+    },
+
     async createAuditorInvite(input) {
       invites.set(input.email.toLowerCase(), input)
       return input
@@ -230,6 +271,7 @@ export function createMemoryRepo(): Repo {
       companies.set(row.id, row)
       return row
     },
+    async getCompanyById(id) { return companies.get(id) },
     async getCompanyOfInvitation(inv) { return companies.get(inv.company_id) },
     async getCompany(id, auditorId) {
       const c = companies.get(id)

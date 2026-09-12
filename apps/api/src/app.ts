@@ -9,6 +9,7 @@ import { invitationModule } from './modules/invitation'
 import { respondentModule } from './modules/respondent'
 import { companyModule } from './modules/company'
 import { authModule } from './modules/auth'
+import { reportModule } from './modules/report'
 
 export interface AppDeps {
   /** Penyimpanan; default in-memory. Pakai createPgRepo untuk Postgres. */
@@ -17,6 +18,8 @@ export interface AppDeps {
   now?: () => Date
   /** Pengiriman OTP; default mencetak ke log agar demo dapat berjalan. */
   sendOtp?: (email: string, code: string) => Promise<void> | void
+  /** Perender PDF; bila tidak ada, endpoint PDF membalas 503 secara jujur. */
+  renderPdf?: (url: string) => Promise<ArrayBuffer>
 }
 
 export function createApp({
@@ -24,6 +27,7 @@ export function createApp({
   baseUrl = process.env.PUBLIC_BASE_URL ?? 'http://localhost:3001',
   now = () => new Date(),
   sendOtp,
+  renderPdf,
 }: AppDeps = {}) {
   const app = new Elysia()
     // FRD §11: satu tempat memetakan error ke amplop seragam.
@@ -41,6 +45,7 @@ export function createApp({
     .use(companyModule({ repo }))
     .use(invitationModule({ repo, baseUrl, now }))
     .use(respondentModule({ repo, now }))
+    .use(reportModule({ repo, baseUrl, now, ...(renderPdf ? { renderPdf } : {}) }))
 
   return { app, repo }
 }

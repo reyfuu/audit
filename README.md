@@ -41,6 +41,15 @@ itu jujur, sehingga status tidak pernah dilaporkan lebih baik dari kenyataan.
 | `apps/web` | Form responden mobile-first + dashboard auditor (undangan, QR, status) | Berjalan, 49 uji |
 | `apps/api/src/db` | Skema Drizzle + repo PostgreSQL, migrasi siap pakai | Berjalan, 35 uji |
 | `apps/api` auth | Login email+OTP, JWT 15 menit, refresh rotatif, undangan tim | Berjalan, 32 uji |
+| `apps/api` laporan | Ekspor PDF & tautan bagikan read-only | Berjalan, 19 uji |
+
+### Laporan
+- **Unduh PDF**: dibuat dengan merender halaman laporan yang sama persis, lewat
+  tautan internal berumur 5 menit yang selalu dicabut setelahnya, termasuk bila
+  render gagal. PDF A4 dengan warna dan meteran skor ikut tercetak.
+- **Tautan bagikan**: read-only, tanpa akun, dapat dicabut kapan saja, punya
+  masa berlaku 7/30/90 hari, menghitung berapa kali dibuka, dan menyediakan
+  opsi menyembunyikan nama perusahaan.
 
 ### Keamanan autentikasi
 - Kode OTP dan refresh token disimpan sebagai **hash**, tidak pernah polos.
@@ -55,11 +64,10 @@ itu jujur, sehingga status tidak pernah dilaporkan lebih baik dari kenyataan.
 
 **Alur utama sudah utuh:** auditor menerbitkan undangan → QR/tautan → owner mengisi → skor dan rekomendasi keluar.
 
-**Yang masih berupa kontrak, belum ada kodenya (14 endpoint):**
+**Yang masih berupa kontrak, belum ada kodenya (10 endpoint):**
 login Google OAuth (FR-02, butuh kredensial eksternal), hapus draft (FR-13),
-ekspor PDF (FR-17), tautan bagikan (FR-18), riwayat & tren (FR-19),
-CMS bank pertanyaan (FR-20..FR-22), dan benchmark industri sebagai endpoint
-tersendiri (FR-15 dasarnya sudah ada).
+riwayat & tren (FR-19), CMS bank pertanyaan (FR-20..FR-22), dan benchmark
+industri sebagai endpoint tersendiri (FR-15 dasarnya sudah ada).
 
 ```bash
 python3 tools/traceability.py   # peta FRD -> implementasi -> uji
@@ -162,9 +170,10 @@ bun run test     # semua uji termasuk spike Elysia
 | Form web & dashboard auditor | `bun test apps/web` | 49/49 lulus |
 | Tampilan di iPhone sungguhan | `bun run check:visual` | 17/17 lulus |
 | Autentikasi & skenario serangan | `bun test apps/api/test/auth.test.ts` | 32/32 lulus |
+| Tautan bagikan & ekspor PDF | `bun test apps/api/test/report.test.ts` | 19/19 lulus |
 | Kontrak penyimpanan (memori & Postgres) | `bun run test:pg` | 110/110 lulus |
 | Type safety (strict) | `bunx tsc --noEmit` | bersih |
-| Keterlacakan FRD → kode → uji | `python3 tools/traceability.py` | 22 siap, 8 ditunda, 0 bermasalah |
+| Keterlacakan FRD → kode → uji | `python3 tools/traceability.py` | 24 siap, 6 ditunda, 0 bermasalah |
 
 Suite kontrak penyimpanan dijalankan terhadap implementasi memori **dan**
 PostgreSQL nyata, sehingga keduanya dijamin berperilaku identik. Uji persistensi

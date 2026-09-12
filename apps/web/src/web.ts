@@ -183,6 +183,23 @@ export function createWeb({ api }: WebDeps) {
       return html(submittedPage(params.token))
     }, { params: t.Object({ token: t.String() }) })
 
+    // ── FR-18 laporan yang dibagikan, dibuka tanpa akun
+    .get('/l/:token', async ({ params }) => {
+      const res = await api(`/l/${params.token}`)
+      if (!res.ok) return html(invalidPage(), 404)
+      const d = await res.json() as {
+        company_name: string | null
+        result: Parameters<typeof resultPage>[0]['result']
+        recommendations: Parameters<typeof resultPage>[0]['recommendations']
+      }
+      return html(resultPage({
+        // Nama disembunyikan bila tautan dibuat dengan opsi anonymize.
+        company_name: d.company_name ?? 'Perusahaan (dirahasiakan)',
+        result: d.result,
+        recommendations: d.recommendations,
+      }))
+    }, { params: t.Object({ token: t.String() }) })
+
     // ── Hasil
     .get('/f/:token/hasil', async ({ params }) => {
       const res = await api(`/f/${params.token}/result`)

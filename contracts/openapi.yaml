@@ -430,7 +430,7 @@ paths:
       tags: [Results]
       summary: Daftar assessment perusahaan
       parameters:
-        - { $ref: '#/components/parameters/CompanyIdHeader' }
+        - { name: company_id, in: query, schema: { type: string, format: uuid } }
         - { name: status, in: query, schema: { $ref: '#/components/schemas/AssessmentStatus' } }
         - { $ref: '#/components/parameters/Page' }
         - { $ref: '#/components/parameters/PageSize' }
@@ -439,7 +439,7 @@ paths:
 
   /assessments/{assessmentId}:
     x-status: planned
-    parameters: [{ $ref: '#/components/parameters/AssessmentIdPath' }, { $ref: '#/components/parameters/CompanyIdHeader' }]
+    parameters: [{ $ref: '#/components/parameters/AssessmentIdPath' }]
     get:
       tags: [Results]
       summary: Detail assessment beserta jawaban tersimpan
@@ -450,7 +450,7 @@ paths:
   # ───────────────────────── Results ─────────────────────────
   /assessments/{assessmentId}/result:
     x-status: planned
-    parameters: [{ $ref: '#/components/parameters/AssessmentIdPath' }, { $ref: '#/components/parameters/CompanyIdHeader' }]
+    parameters: [{ $ref: '#/components/parameters/AssessmentIdPath' }]
     get:
       tags: [Results]
       summary: Hasil skoring lengkap
@@ -460,7 +460,7 @@ paths:
 
   /assessments/{assessmentId}/recommendations:
     x-status: planned
-    parameters: [{ $ref: '#/components/parameters/AssessmentIdPath' }, { $ref: '#/components/parameters/CompanyIdHeader' }]
+    parameters: [{ $ref: '#/components/parameters/AssessmentIdPath' }]
     get:
       tags: [Results]
       summary: Rekomendasi berprioritas dan roadmap
@@ -482,29 +482,50 @@ paths:
 
   # ───────────────────────── Reports ─────────────────────────
   /assessments/{assessmentId}/report/pdf:
-    x-status: planned
-    parameters: [{ $ref: '#/components/parameters/AssessmentIdPath' }, { $ref: '#/components/parameters/CompanyIdHeader' }]
+    x-status: implemented
+    parameters: [{ $ref: '#/components/parameters/AssessmentIdPath' }]
     post:
       tags: [Reports]
-      summary: Minta pembuatan PDF (asinkron)
+      summary: Unduh laporan sebagai PDF (FR-17)
+      description: |
+        PDF dihasilkan dengan merender halaman laporan yang sama persis
+        (ADR-005), lewat tautan internal berumur 5 menit yang langsung dicabut
+        setelah render selesai maupun gagal.
       responses:
-        '202': { description: Antrean dibuat, content: { application/json: { schema: { $ref: '#/components/schemas/ReportJob' } } } }
-
-  /reports/jobs/{jobId}:
-    x-status: planned
-    parameters: [{ name: jobId, in: path, required: true, schema: { type: string, format: uuid } }]
-    get:
-      tags: [Reports]
-      summary: Status job PDF
-      responses:
-        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/ReportJob' } } } }
+        '200':
+          description: Berkas PDF
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Assessment belum diskor
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+        '503':
+          description: Perender PDF tidak tersedia di lingkungan ini
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
 
   /assessments/{assessmentId}/share-links:
-    x-status: planned
-    parameters: [{ $ref: '#/components/parameters/AssessmentIdPath' }, { $ref: '#/components/parameters/CompanyIdHeader' }]
+    x-status: implemented
+    parameters: [{ $ref: '#/components/parameters/AssessmentIdPath' }]
+    get:
+      tags: [Reports]
+      summary: Daftar tautan bagikan
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/ShareLinkListItem' }
+        '404': { $ref: '#/components/responses/NotFound' }
     post:
       tags: [Reports]
-      summary: Buat tautan berbagi read-only
+      summary: Buat tautan bagikan read-only (FR-18)
       requestBody:
         content:
           application/json:
@@ -512,19 +533,44 @@ paths:
               type: object
               properties:
                 expires_in_days: { type: integer, enum: [7, 30, 90], default: 30 }
-                anonymize: { type: boolean, default: false }
+                anonymize:
+                  type: boolean
+                  default: false
+                  description: Sembunyikan nama perusahaan saat laporan dibuka
       responses:
         '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/ShareLink' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
 
-  /share-links/{token}:
-    x-status: planned
-    parameters: [{ name: token, in: path, required: true, schema: { type: string } }]
+  /share-links/{shareId}:
+    x-status: implemented
+    parameters:
+      - name: shareId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
     delete:
       tags: [Reports]
-      summary: Cabut tautan berbagi
-      responses: { '204': { description: No Content } }
+      summary: Cabut tautan bagikan (FR-18)
+      responses:
+        '204': { description: Dicabut; tautan langsung tidak berlaku }
+        '404': { $ref: '#/components/responses/NotFound' }
 
-  # ─────────────────────── Benchmark ───────────────────────
+  /l/{token}:
+    x-status: implemented
+    parameters:
+      - name: token
+        in: path
+        required: true
+        schema: { type: string, minLength: 32 }
+    get:
+      tags: [Reports]
+      summary: Lihat laporan yang dibagikan, tanpa akun (FR-18)
+      security: []
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/SharedReport' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /benchmark:
     x-status: planned
     get:
@@ -599,12 +645,6 @@ components:
     bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
 
   parameters:
-    CompanyIdHeader:
-      name: X-Company-Id
-      in: header
-      required: true
-      description: Organisasi aktif untuk permintaan ini
-      schema: { type: string, format: uuid }
     CompanyIdPath:
       name: companyId
       in: path
@@ -1086,16 +1126,32 @@ components:
 
     ShareLink:
       type: object
+      description: Dikembalikan sekali saat pembuatan; `url` memuat token.
       properties:
-        token: { type: string }
+        id: { type: string, format: uuid }
         url: { type: string, format: uri }
         expires_at: { type: string, format: date-time }
         anonymize: { type: boolean }
+        view_count: { type: integer }
+
+    ShareLinkListItem:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        url:
+          oneOf: [{ type: string, format: uri }, { type: 'null' }]
+          description: null bila sudah dicabut atau kedaluwarsa
+        expires_at: { type: string, format: date-time }
+        anonymize: { type: boolean }
+        revoked: { type: boolean }
+        view_count: { type: integer }
 
     SharedReport:
       type: object
       properties:
-        organization_name: { type: string, nullable: true, description: null bila anonymize }
+        company_name:
+          oneOf: [{ type: string }, { type: 'null' }]
+          description: null bila tautan dibuat dengan opsi anonymize
         result: { $ref: '#/components/schemas/ScoreResult' }
         recommendations: { $ref: '#/components/schemas/RecommendationBundle' }
 

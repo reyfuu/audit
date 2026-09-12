@@ -8,7 +8,7 @@
  */
 import { relations } from 'drizzle-orm'
 import {
-  index, integer, jsonb, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid,
+  boolean, index, integer, jsonb, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid,
 } from 'drizzle-orm/pg-core'
 
 export const auditorRole = pgEnum('auditor_role', ['auditor', 'auditor_admin', 'sysadmin'])
@@ -155,6 +155,28 @@ export const auditorInvites = pgTable('auditor_invites', {
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [uniqueIndex('auditor_invites_email_key').on(t.email)])
+
+/**
+ * Tautan bagikan read-only untuk laporan (FR-18).
+ * Berbeda dari undangan: tidak memberi hak mengisi, hanya membaca hasil.
+ */
+export const shareLinks = pgTable('share_links', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  assessmentId: uuid('assessment_id').notNull()
+    .references(() => assessments.id, { onDelete: 'cascade' }),
+  tokenHash: text('token_hash').notNull(),
+  tokenSealed: text('token_sealed').notNull(),
+  /** Menyembunyikan nama perusahaan saat laporan dibagikan ke luar. */
+  anonymize: boolean('anonymize').notNull().default(false),
+  createdBy: uuid('created_by').references(() => auditors.id, { onDelete: 'set null' }),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  viewCount: integer('view_count').notNull().default(0),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('share_links_token_hash_key').on(t.tokenHash),
+  index('share_links_assessment_idx').on(t.assessmentId),
+])
 
 export const auditLogs = pgTable('audit_logs', {
   id: uuid('id').primaryKey().defaultRandom(),

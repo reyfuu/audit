@@ -15,7 +15,7 @@ import type { Answer } from '@siapai/scoring'
 import * as s from './schema'
 import type {
   AssessmentRow, AuditorInviteRow, AuditorRow, CompanyRow, InvitationRow,
-  OtpChallengeRow, Repo, SessionRow,
+  OtpChallengeRow, Repo, SessionRow, ShareLinkRow,
 } from '../lib/repo'
 
 export type Db = PostgresJsDatabase<typeof s>
@@ -102,6 +102,15 @@ function toSession(r: typeof s.sessions.$inferSelect): SessionRow {
     id: r.id, auditor_id: r.auditorId, token_hash: r.tokenHash, family_id: r.familyId,
     used_at: iso(r.usedAt), revoked_at: iso(r.revokedAt),
     expires_at: r.expiresAt.toISOString(),
+  }
+}
+
+function toShare(r: typeof s.shareLinks.$inferSelect): ShareLinkRow {
+  return {
+    id: r.id, assessment_id: r.assessmentId, token_hash: r.tokenHash,
+    token_sealed: r.tokenSealed, anonymize: r.anonymize, created_by: r.createdBy,
+    expires_at: r.expiresAt.toISOString(), revoked_at: iso(r.revokedAt),
+    view_count: r.viewCount,
   }
 }
 
@@ -196,6 +205,45 @@ export function createPgRepo(db: Db): Repo {
         .where(and(eq(s.sessions.familyId, familyId), isNull(s.sessions.revokedAt)))
     },
 
+    async createShareLink(input) {
+      const [r] = await db.insert(s.shareLinks).values({
+        id: input.id,
+        assessmentId: input.assessment_id,
+        tokenHash: input.token_hash,
+        tokenSealed: input.token_sealed,
+        anonymize: input.anonymize,
+        createdBy: input.created_by,
+        expiresAt: new Date(input.expires_at),
+        revokedAt: input.revoked_at ? new Date(input.revoked_at) : null,
+        viewCount: input.view_count,
+      }).returning()
+      return toShare(r!)
+    },
+
+    async findShareLinkByTokenHash(hash) {
+      const [r] = await db.select().from(s.shareLinks).where(eq(s.shareLinks.tokenHash, hash))
+      return r ? toShare(r) : undefined
+    },
+
+    async getShareLink(id) {
+      const [r] = await db.select().from(s.shareLinks).where(eq(s.shareLinks.id, id))
+      return r ? toShare(r) : undefined
+    },
+
+    async listShareLinks(assessmentId) {
+      const rows = await db.select().from(s.shareLinks)
+        .where(eq(s.shareLinks.assessmentId, assessmentId))
+        .orderBy(desc(s.shareLinks.createdAt))
+      return rows.map(toShare)
+    },
+
+    async saveShareLink(row) {
+      await db.update(s.shareLinks).set({
+        revokedAt: row.revoked_at ? new Date(row.revoked_at) : null,
+        viewCount: row.view_count,
+      }).where(eq(s.shareLinks.id, row.id))
+    },
+
     async createAuditorInvite(input) {
       const [r] = await db.insert(s.auditorInvites).values({
         id: input.id,
@@ -241,6 +289,11 @@ export function createPgRepo(db: Db): Repo {
       // Kepemilikan ditegakkan di query, bukan diperiksa setelahnya.
       const [r] = await db.select().from(s.companies)
         .where(and(eq(s.companies.id, id), eq(s.companies.ownerAuditorId, auditorId)))
+      return r ? toCompany(r) : undefined
+    },
+
+    async getCompanyById(id) {
+      const [r] = await db.select().from(s.companies).where(eq(s.companies.id, id))
       return r ? toCompany(r) : undefined
     },
 

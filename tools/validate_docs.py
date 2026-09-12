@@ -178,13 +178,15 @@ token_auth, priv_ok = [], []
 for path, item in SPEC["paths"].items():
     for method, op in item.items():
         if method not in ("get","post","patch","put","delete"): continue
-        is_token_path = path.startswith("/f/{token}")
+        # Jalur bertoken: responden (/f) dan laporan yang dibagikan (/l).
+        # Keduanya sengaja tanpa Bearer; tokennya sendiri adalah kredensial.
+        is_token_path = path.startswith("/f/{token}") or path.startswith("/l/{token}")
         is_public = is_token_path or (path.startswith("/auth") and path not in AUTHENTICATED_AUTH_PATHS)
         has_override = op.get("security") == []
         if is_public and not has_override: token_auth.append(f"{method} {path}")
         if not is_public and has_override: priv_ok.append(f"{method} {path}")
-check("R19a","Jalur responden /f/{token} memakai security: [] (FR-25 AC4)", not token_auth,
-      f"pelanggaran={token_auth}")
+check("R19a","Jalur bertoken (/f dan /l) memakai security: [] (FR-25 AC4, FR-18)",
+      not token_auth, f"pelanggaran={token_auth}")
 check("R19b","Endpoint auditor tidak melewati auth", not priv_ok, f"pelanggaran={priv_ok}")
 check("R19c","/auth/me & /auth/invites tetap mewajibkan auth",
       all(SPEC["paths"][p][m].get("security") != []
@@ -196,25 +198,34 @@ check("R19d","Endpoint QR memerlukan auth auditor (FR-24 AC4)",
           for p in ("/invitations/{invitationId}/qr.png", "/invitations/{invitationId}/qr.svg")),
       "QR tidak dapat diakses anonim")
 
-# ── R20 endpoint auditor ber-scope perusahaan mewajibkan X-Company-Id
+# ── R20 scope ditentukan kepemilikan data, bukan header yang bisa dipalsu
 def params_of(path, op):
     return [p.get("$ref","") for p in (SPEC["paths"][path].get("parameters",[]) + op.get("parameters",[]))]
-scoped = [p for p in SPEC["paths"] if p.startswith("/assessments")]
-miss = []
-for p in scoped:
-    for m, op in SPEC["paths"][p].items():
-        if m in ("get","post","patch","delete") and "CompanyIdHeader" not in " ".join(params_of(p, op)):
-            miss.append(f"{m} {p}")
-check("R20a","Endpoint /assessments mewajibkan X-Company-Id", not miss, f"kurang={miss}")
 
-# Jalur responden justru TIDAK boleh menuntut X-Company-Id: owner tidak tahu id
-# internal dan tidak punya akun. Scope ditentukan oleh token undangan saja.
-leak = []
-for p in [x for x in SPEC["paths"] if x.startswith("/f/{token}")]:
-    for m, op in SPEC["paths"][p].items():
+# Model v2 tidak lagi memakai X-Company-Id. Auditor di-scope lewat
+# owner_auditor_id di layer repository, dan jalur bertoken lewat tokennya
+# sendiri. Header apa pun dapat dipalsu klien, jadi tidak boleh menjadi
+# dasar otorisasi di endpoint mana pun.
+header_dipakai = []
+for p, item in SPEC["paths"].items():
+    for m, op in item.items():
         if m in ("get","post","patch","delete") and "CompanyIdHeader" in " ".join(params_of(p, op)):
-            leak.append(f"{m} {p}")
-check("R20b","Jalur responden tidak menuntut X-Company-Id", not leak, f"pelanggaran={leak}")
+            header_dipakai.append(f"{m} {p}")
+check("R20a","Tidak ada endpoint yang mengandalkan header X-Company-Id",
+      not header_dipakai, f"pelanggaran={header_dipakai}")
+
+# Jalur bertoken tidak boleh menuntut id internal apa pun dari klien.
+leak = []
+for p in [x for x in SPEC["paths"] if x.startswith("/f/{token}") or x.startswith("/l/{token}")]:
+    for m, op in SPEC["paths"][p].items():
+        if m in ("get","post","patch","delete"):
+            names = [q.get("name","") for q in
+                     (SPEC["paths"][p].get("parameters",[]) + op.get("parameters",[]))
+                     if isinstance(q, dict)]
+            if any(n.lower() in ("company_id","assessmentid","companyid") for n in names):
+                leak.append(f"{m} {p}")
+check("R20b","Jalur bertoken tidak menuntut id internal dari klien", not leak,
+      f"pelanggaran={leak}")
 
 # ── R21 mermaid diagram seimbang (setiap ``` mermaid ditutup)
 for name in ("BRD","PRD","TRD","DESIGN"):

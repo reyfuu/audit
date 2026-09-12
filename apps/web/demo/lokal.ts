@@ -25,6 +25,12 @@ const otpTerakhir = new Map<string, string>()
 const { app: api, repo } = createApp({
   repo: storage.repo,
   baseUrl: WEB_BASE,
+  // Perender PDF sungguhan; bila Playwright tidak terpasang, endpoint PDF
+  // melapor 503 secara jujur alih-alih membuat demo gagal menyala.
+  renderPdf: async (url: string) => {
+    const { renderPdf } = await import('../../api/src/lib/pdf')
+    return renderPdf(url)
+  },
   sendOtp: (email, code) => {
     otpTerakhir.set(email, code)
     console.log(`\n  [OTP] ${email} → ${code}\n`)

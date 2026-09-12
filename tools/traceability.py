@@ -42,8 +42,8 @@ IMPL_MARKERS = {
     "FR-14": ["recommend("],
     "FR-15": ["benchmark_available"],
     "FR-16": ["/:token/result"],
-    "FR-17": None,
-    "FR-18": None,
+    "FR-17": ["report/pdf", "renderPdf"],
+    "FR-18": ["share-links", "findShareLinkByTokenHash", "anonymize"],
     "FR-19": None,
     "FR-20": None, "FR-21": None, "FR-22": None,
     "FR-23": ["/invitations", "token_hash", "sealToken"],
@@ -67,6 +67,8 @@ TEST_MARKERS["FR-15"] = ["benchmark"]
 TEST_MARKERS["FR-01"] = ["FR-01"]
 TEST_MARKERS["FR-03"] = ["FR-03"]
 TEST_MARKERS["FR-04"] = ["FR-04"]
+TEST_MARKERS["FR-17"] = ["FR-17"]
+TEST_MARKERS["FR-18"] = ["FR-18"]
 
 rows = []
 for fr in sorted(IMPL_MARKERS, key=lambda x: int(x[3:])):
@@ -104,6 +106,14 @@ def has_route(p: str) -> bool:
     if p.startswith("/invitations/"):
         seg = p.split("/")[-1]
         return (f"'/:id/{seg}'" in SRC) or (seg == "{invitationId}" and "'/:id'" in SRC)
+    if p.startswith("/l/"):
+        return "'/l/:token'" in SRC
+    if p.startswith("/share-links/"):
+        return "'/share-links/:id'" in SRC
+    if p.startswith("/assessments/") and p.endswith("/share-links"):
+        return "'/assessments/:id/share-links'" in SRC
+    if p.startswith("/assessments/") and p.endswith("/report/pdf"):
+        return "'/assessments/:id/report/pdf'" in SRC
     if p.startswith("/auth/"):
         seg = p.split("/")[-1]
         return f"'/{seg}'" in SRC
