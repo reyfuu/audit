@@ -182,11 +182,45 @@ describe('FR-31 halaman tinjauan AI', () => {
     expect(tabel(sesudah)).not.toContain('Belum ditinjau')
   })
 
+  it('daftar tinjauan dipaginasi seperti daftar lain', async () => {
+    const chat = stubChat()
+    const t = await setup(chat.client)
+    // 30 assessment selesai: lebih dari satu halaman.
+    for (let i = 1; i <= 30; i++) await perusahaan(t, `PT Antre ${String(i).padStart(2, '0')}`, true)
+    const h1 = await (await t.get('/app/tinjauan')).text()
+    expect(tabel(h1).match(/<tr>/g) ?? []).toHaveLength(25)
+    expect(h1).toContain('Halaman 1 dari 2')
+    const h2 = await (await t.get('/app/tinjauan?page=2')).text()
+    expect(tabel(h2).match(/<tr>/g) ?? []).toHaveLength(5)
+  }, 60000)
+
   it('tanpa laporan selesai, halaman mengatakannya apa adanya', async () => {
     const t = await setup(stubChat().client)
     await perusahaan(t, 'PT Belum Isi')
     const page = await (await t.get('/app/tinjauan')).text()
     expect(page).toContain('Belum ada laporan selesai')
+  })
+
+  it('tinjauan internal tidak bocor ke laporan yang dibagikan maupun ke responden', async () => {
+    const chat = stubChat()
+    const t = await setup(chat.client)
+    const p = await perusahaan(t, 'PT Rahasia', true)
+    await t.post(`/app/undangan/${p.id}/tinjau`)
+
+    // Tautan bagikan: dibuka tanpa akun sama sekali.
+    await t.post(`/app/undangan/${p.id}/bagikan`)
+    const detail = await (await t.get(`/app/undangan/${p.id}`)).text()
+    const url = /http:\/\/localhost:3000\/l\/[A-Za-z0-9_-]+/.exec(detail)![0]
+    const publik = await (await t.app.handle(new Request(url))).text()
+    expect(publik).toContain('Hasil audit')
+    expect(publik).not.toContain('Data diklaim terpusat')
+    expect(publik).not.toContain('kualitas data')
+
+    // Halaman hasil milik responden juga tidak memuat catatan internal auditor.
+    const hasil = await (await t.app.handle(
+      new Request(`${BASE}/f/${p.token}/hasil`))).text()
+    expect(hasil).not.toContain('Data diklaim terpusat')
+    expect(hasil).not.toContain('Tinjauan AI')
   })
 
   it('tanpa konfigurasi model, tombol tinjau tidak membuat halaman rusak', async () => {

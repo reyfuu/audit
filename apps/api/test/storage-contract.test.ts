@@ -70,6 +70,52 @@ for (const k of kasus) {
       expect(lagi?.role).toBe('auditor')
     })
 
+    it('kata sandi disimpan dan dibaca sebagai hash (FR-02)', async () => {
+      const a = await repo.createAuditor({ ...contohAuditor, password_hash: 'scrypt$abc$def' })
+      expect((await repo.getAuditorByEmail('a@x.id'))?.password_hash).toBe('scrypt$abc$def')
+
+      // Menetapkan ulang menimpa nilai lama, bukan menambah baris baru.
+      await repo.setAuditorPassword(a.id, 'scrypt$baru$hash')
+      expect((await repo.getAuditor(a.id))?.password_hash).toBe('scrypt$baru$hash')
+    })
+
+    it('auditor tanpa kata sandi tidak mengarang nilai (FR-02)', async () => {
+      const a = await repo.createAuditor(contohAuditor)
+      expect((await repo.getAuditor(a.id))?.password_hash).toBeUndefined()
+    })
+
+    it('snapshot tinjauan AI bertahan pada assessment (FR-31)', async () => {
+      const a = await repo.createAuditor(contohAuditor)
+      const c = await repo.createCompany(contohCompany(a.id))
+      const as = await repo.createAssessment({
+        id: crypto.randomUUID(), company_id: c.id, status: 'SCORED',
+        questionnaire_version: '1.0.0', rubric_version: '1.0.0',
+        started_at: new Date().toISOString(), submitted_at: new Date().toISOString(),
+      })
+      as.ai_review = {
+        data_quality: 61, summary: 'ringkas',
+        flags: [{ question_codes: ['DAT-01'], severity: 'high', issue: 'x', follow_up: 'y' }],
+        next_checks: ['cek'], model: 'm', reviewed_at: '2026-01-01T00:00:00.000Z',
+      }
+      await repo.saveAssessment(as)
+
+      const lagi = await repo.getAssessment(as.id)
+      const r = lagi?.ai_review as { data_quality: number; flags: { severity: string }[] }
+      expect(r.data_quality).toBe(61)
+      expect(r.flags[0]!.severity).toBe('high')
+    })
+
+    it('assessment tanpa tinjauan AI tetap undefined, bukan null yang menyamar', async () => {
+      const a = await repo.createAuditor(contohAuditor)
+      const c = await repo.createCompany(contohCompany(a.id))
+      const as = await repo.createAssessment({
+        id: crypto.randomUUID(), company_id: c.id, status: 'IN_PROGRESS',
+        questionnaire_version: '1.0.0', rubric_version: '1.0.0',
+        started_at: new Date().toISOString(), submitted_at: null,
+      })
+      expect((await repo.getAssessment(as.id))?.ai_review).toBeUndefined()
+    })
+
     it('auditor yang tidak ada mengembalikan undefined', async () => {
       expect(await repo.getAuditor('00000000-0000-0000-0000-000000000000')).toBeUndefined()
     })

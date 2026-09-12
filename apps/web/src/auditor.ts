@@ -285,7 +285,7 @@ ${macet.length ? `<div class="card">
     }, { query: t.Object({ q: t.Optional(t.String()), page: t.Optional(t.String()) }) })
 
     // ── Tinjauan AI lintas perusahaan (FR-31, FR-32)
-    .get('/app/tinjauan', async ({ sesi }) => {
+    .get('/app/tinjauan', async ({ sesi, query }) => {
       const s = await sesi()
       if (!s) return redirect('/masuk')
       const { api, cookiesBaru } = s
@@ -302,6 +302,11 @@ ${macet.length ? `<div class="card">
 
       // Yang paling meragukan lebih dulu: itulah gunanya daftar ini.
       sudah.sort((a, b) => a.review!.data_quality - b.review!.data_quality)
+      // Sama seperti daftar lain, tabel dipaginasi. Dengan ratusan perusahaan,
+      // merender semuanya sekaligus membuat halaman membengkak tanpa guna.
+      const urut = [...sudah, ...tinjauan.filter((x) => !x.review)]
+      const halaman = Math.max(1, Number(query.page ?? '1') || 1)
+      const potongan = urut.slice((halaman - 1) * PER_PAGE, halaman * PER_PAGE)
 
       return html(shell({
         title: 'Tinjauan AI — SiapAI', active: '/app/tinjauan', ...(me ? { email: me.email } : {}),
@@ -337,9 +342,9 @@ ${selesai.length === 0
       <h2>Hasil tinjauan</h2>
       <table class="tbl">
         <thead><tr><th>Perusahaan</th><th>Kualitas data</th><th>Temuan</th><th></th></tr></thead>
-        <tbody>${tinjauan.length === 0
+        <tbody>${potongan.length === 0
           ? `<tr><td colspan="4" class="muted">Belum ada.</td></tr>`
-          : [...sudah, ...tinjauan.filter((x) => !x.review)].map(({ inv, review }) => `
+          : potongan.map(({ inv, review }) => `
             <tr>
               <td><strong>${esc(inv.company_name)}</strong></td>
               <td>${review ? `${review.data_quality}/100` : '<span class="muted">—</span>'}</td>
@@ -353,9 +358,10 @@ ${selesai.length === 0
               <td><a href="/app/undangan/${esc(inv.id)}">Buka</a></td>
             </tr>`).join('')}</tbody>
       </table>
+      ${paginasi('/app/tinjauan', query as Record<string, string>, halaman, urut.length)}
     </div>`}`,
       }), 200, cookiesBaru)
-    })
+    }, { query: t.Object({ page: t.Optional(t.String()) }) })
 
     .post('/app/tinjauan/jalankan', async ({ sesi }) => {
       const s = await sesi()
