@@ -49,7 +49,7 @@ async function setup() {
       body: new URLSearchParams(form).toString(),
     })).then(simpan)
 
-  await post('/masuk', { email: 'd@x.id', password: SANDI })
+  await post('/', { email: 'd@x.id', password: SANDI })
   return { app, repo, auditor, get, post }
 }
 
@@ -180,7 +180,7 @@ describe('lencana merek', () => {
 
   it('halaman masuk memakai lencana yang sama agar terasa satu produk', async () => {
     const t = await setup()
-    const page = await (await t.app.handle(new Request(`${BASE}/masuk`))).text()
+    const page = await (await t.app.handle(new Request(`${BASE}/`))).text()
     expect(page).toContain('logo-mark')
     expect(page).toContain('login-brand')
   })

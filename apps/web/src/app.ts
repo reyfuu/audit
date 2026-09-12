@@ -10,7 +10,6 @@ import { auditorModule } from './auditor'
 import type { RawApi } from './auth-guard'
 import { loginModule } from './login'
 import { createWeb } from './web'
-import { redirect } from './shell'
 
 export interface WebAppDeps {
   /** Pemanggil API; token sesi disuntikkan per permintaan bila ada. */
@@ -20,8 +19,8 @@ export interface WebAppDeps {
 
 export function createWebApp({ raw, publicBase }: WebAppDeps) {
   return new Elysia()
-    // Akar mengarah ke dashboard; guard sesi yang memutuskan perlu masuk atau tidak.
-    .get('/', () => redirect('/app'))
+    // Akar adalah halaman masuk; modul login yang memutuskan apakah pengunjung
+    // perlu masuk atau langsung diteruskan ke dashboard.
     .use(loginModule({ raw, publicBase }))
     .use(akunModule({ raw, publicBase }))
     .use(auditorModule({ raw, publicBase }))

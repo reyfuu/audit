@@ -76,7 +76,7 @@ export const secureDari = (publicBase: string) => amanUntuk(publicBase)
 
 /**
  * Plugin yang menyediakan `sesi` pada konteks. Halaman yang memerlukan login
- * memanggil `sesi()` dan mengarahkan ke /masuk bila null.
+ * memanggil `sesi()` dan mengarahkan ke akar (halaman masuk) bila null.
  */
 export function sessionPlugin({ raw, publicBase }: AuthWebDeps) {
   const secure = secureDari(publicBase)

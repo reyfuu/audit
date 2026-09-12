@@ -14,7 +14,8 @@ import { hashPassword } from '../../api/src/lib/auth'
 
 /**
  * Alat ini memakai alur login sungguhan, bukan token pintasan: browser benar-benar
- * mengisi halaman /masuk, sehingga kerusakan pada sesi ikut ketahuan di sini.
+ * mengisi halaman masuk di akar situs, sehingga kerusakan pada sesi ikut
+ * ketahuan di sini.
  */
 const SANDI = 'sandiVisual123'
 
@@ -207,8 +208,8 @@ const p4 = await desktop.newPage()
 
 // Masuk lewat halaman login sungguhan; ini juga menguji cookie sesi.
 await p4.goto(`${WEB_BASE}/app`, { waitUntil: 'networkidle' })
-check('Dashboard mengarahkan pengunjung tanpa sesi ke halaman masuk',
-  p4.url().includes('/masuk'), `berakhir di ${new URL(p4.url()).pathname}`)
+check('Dashboard mengarahkan pengunjung tanpa sesi ke halaman masuk di akar',
+  new URL(p4.url()).pathname === '/', `berakhir di ${new URL(p4.url()).pathname}`)
 await p4.fill('#email', auditor.email)
 await p4.fill('#password', SANDI)
 await p4.getByRole('button', { name: 'Masuk' }).click()

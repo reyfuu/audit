@@ -48,16 +48,44 @@ async function setup(publicBase = BASE) {
 }
 
 describe('FR-02 halaman masuk', () => {
-  it('pengunjung tanpa sesi diarahkan ke halaman masuk', async () => {
+  it('akar situs menyajikan halaman masuk, bukan mengalihkan', async () => {
+    const t = await setup()
+    const res = await t.get('/')
+    expect(res.status).toBe(200)
+    const page = await res.text()
+    expect(page).toContain('Masuk sebagai auditor')
+    expect(page).toContain('type="password"')
+  })
+
+  it('masuk dapat dikirim langsung ke akar', async () => {
+    const t = await setup()
+    const res = await t.post('/', { email: 'd@x.id', password: SANDI })
+    expect(res.status).toBe(303)
+    expect(res.headers.get('location')).toBe('/app')
+  })
+
+  it('alamat lama /masuk tetap dilayani agar tautan beredar tidak mati', async () => {
+    const t = await setup()
+    const res = await t.get('/masuk')
+    expect(res.status).toBe(303)
+    expect(res.headers.get('location')).toBe('/')
+
+    // Termasuk kiriman formulir dari halaman yang sudah terbuka sebelum pindah.
+    const kirim = await t.post('/masuk', { email: 'd@x.id', password: SANDI })
+    expect(kirim.status).toBe(303)
+    expect(kirim.headers.get('location')).toBe('/app')
+  })
+
+  it('pengunjung tanpa sesi diarahkan ke akar', async () => {
     const t = await setup()
     const res = await t.get('/app')
     expect(res.status).toBe(303)
-    expect(res.headers.get('location')).toBe('/masuk')
+    expect(res.headers.get('location')).toBe('/')
   })
 
   it('halaman masuk hanya meminta email dan kata sandi', async () => {
     const t = await setup()
-    const page = await (await t.get('/masuk')).text()
+    const page = await (await t.get('/')).text()
     expect(page).toContain('name="email"')
     expect(page).toContain('type="password"')
     // Tidak ada login pihak ketiga, sesuai keputusan produk.
@@ -66,7 +94,7 @@ describe('FR-02 halaman masuk', () => {
 
   it('kredensial benar membawa masuk dan menyetel cookie sesi', async () => {
     const t = await setup()
-    const res = await t.post('/masuk', { email: 'd@x.id', password: SANDI })
+    const res = await t.post('/', { email: 'd@x.id', password: SANDI })
     expect(res.status).toBe(303)
     expect(res.headers.get('location')).toBe('/app')
     const set = res.headers.getSetCookie?.() ?? []
@@ -79,7 +107,7 @@ describe('FR-02 halaman masuk', () => {
 
   it('kata sandi salah menampilkan pesan tanpa membuka sesi', async () => {
     const t = await setup()
-    const res = await t.post('/masuk', { email: 'd@x.id', password: 'salah-sekali' })
+    const res = await t.post('/', { email: 'd@x.id', password: 'salah-sekali' })
     expect(res.status).toBe(401)
     expect(await res.text()).toContain('Email atau kata sandi salah')
     expect(res.headers.getSetCookie?.() ?? []).toHaveLength(0)
@@ -87,14 +115,14 @@ describe('FR-02 halaman masuk', () => {
 
   it('email tidak dikenal memberi pesan yang sama dengan kata sandi salah', async () => {
     const t = await setup()
-    const a = await (await t.post('/masuk', { email: 'd@x.id', password: 'salah' })).text()
-    const b = await (await t.post('/masuk', { email: 'hantu@x.id', password: 'salah' })).text()
+    const a = await (await t.post('/', { email: 'd@x.id', password: 'salah' })).text()
+    const b = await (await t.post('/', { email: 'hantu@x.id', password: 'salah' })).text()
     expect(a.replace(/d@x\.id/g, '')).toBe(b.replace(/hantu@x\.id/g, ''))
   })
 
   it('sesi aktif dapat membuka dashboard', async () => {
     const t = await setup()
-    const cookie = t.cookieDari(await t.post('/masuk', { email: 'd@x.id', password: SANDI }))
+    const cookie = t.cookieDari(await t.post('/', { email: 'd@x.id', password: SANDI }))
     const res = await t.get('/app', cookie)
     expect(res.status).toBe(200)
     expect(await res.text()).toContain('Ringkasan')
@@ -102,8 +130,8 @@ describe('FR-02 halaman masuk', () => {
 
   it('yang sudah masuk tidak dipaksa melihat halaman masuk lagi', async () => {
     const t = await setup()
-    const cookie = t.cookieDari(await t.post('/masuk', { email: 'd@x.id', password: SANDI }))
-    const res = await t.get('/masuk', cookie)
+    const cookie = t.cookieDari(await t.post('/', { email: 'd@x.id', password: SANDI }))
+    const res = await t.get('/', cookie)
     expect(res.status).toBe(303)
     expect(res.headers.get('location')).toBe('/app')
   })
@@ -115,7 +143,7 @@ describe('FR-02 halaman masuk', () => {
     const basi = `${ACCESS_COOKIE}=basi.token.lama; ${REFRESH_COOKIE}=refresh-sudah-mati`
 
     // Dulu: /masuk -> /app -> /masuk -> ... sampai ERR_TOO_MANY_REDIRECTS.
-    const masuk = await t.get('/masuk', basi)
+    const masuk = await t.get('/', basi)
     expect(masuk.status).toBe(200)
     expect(await masuk.text()).toContain('type="password"')
 
@@ -127,8 +155,8 @@ describe('FR-02 halaman masuk', () => {
     // Dari sisi /app cukup satu pengalihan, lalu berhenti.
     const app = await t.get('/app', basi)
     expect(app.status).toBe(303)
-    expect(app.headers.get('location')).toBe('/masuk')
-    expect((await t.get('/masuk', basi)).status).toBe(200)
+    expect(app.headers.get('location')).toBe('/')
+    expect((await t.get('/', basi)).status).toBe(200)
   })
 
   it('cookie separuh atau kosong tidak membuat pengalihan berputar', async () => {
@@ -141,15 +169,15 @@ describe('FR-02 halaman masuk', () => {
       `${ACCESS_COOKIE}=; ${REFRESH_COOKIE}=`,
     ]) {
       const app = await t.get('/app', cookie)
-      expect(app.headers.get('location')).toBe('/masuk')
-      expect((await t.get('/masuk', cookie)).status).toBe(200)
+      expect(app.headers.get('location')).toBe('/')
+      expect((await t.get('/', cookie)).status).toBe(200)
     }
   })
 
   it('sesi yang sah tetap dilewatkan ke dashboard tanpa login ulang', async () => {
     const t = await setup()
-    const cookie = t.cookieDari(await t.post('/masuk', { email: 'd@x.id', password: SANDI }))
-    const res = await t.get('/masuk', cookie)
+    const cookie = t.cookieDari(await t.post('/', { email: 'd@x.id', password: SANDI }))
+    const res = await t.get('/', cookie)
     expect(res.status).toBe(303)
     expect(res.headers.get('location')).toBe('/app')
   })
@@ -157,9 +185,9 @@ describe('FR-02 halaman masuk', () => {
   it('cookie ditandai Secure hanya bila situs dilayani lewat https', async () => {
     const lokal = await setup('http://localhost:3000')
     const aman = await setup('https://siapai.id')
-    const c1 = (await lokal.post('/masuk', { email: 'd@x.id', password: SANDI }))
+    const c1 = (await lokal.post('/', { email: 'd@x.id', password: SANDI }))
       .headers.getSetCookie!()
-    const c2 = (await aman.post('/masuk', { email: 'd@x.id', password: SANDI }))
+    const c2 = (await aman.post('/', { email: 'd@x.id', password: SANDI }))
       .headers.getSetCookie!()
     expect(c1.every((c) => !c.includes('Secure'))).toBe(true)
     expect(c2.every((c) => c.includes('Secure'))).toBe(true)
@@ -169,12 +197,12 @@ describe('FR-02 halaman masuk', () => {
 describe('FR-03 keluar', () => {
   it('menghapus cookie dan mencabut sesi di server', async () => {
     const t = await setup()
-    const masuk = await t.post('/masuk', { email: 'd@x.id', password: SANDI })
+    const masuk = await t.post('/', { email: 'd@x.id', password: SANDI })
     const cookie = t.cookieDari(masuk)
     const refresh = readCookies(cookie)[REFRESH_COOKIE]!
 
     const keluar = await t.post('/keluar', {}, cookie)
-    expect(keluar.headers.get('location')).toBe('/masuk')
+    expect(keluar.headers.get('location')).toBe('/')
     expect((keluar.headers.getSetCookie?.() ?? []).every((c) => c.includes('Max-Age=0'))).toBe(true)
 
     // Refresh token lama benar-benar mati, bukan hanya hilang dari peramban.
@@ -190,7 +218,7 @@ describe('FR-03 keluar', () => {
 describe('FR-03 access token kedaluwarsa', () => {
   it('sesi disegarkan diam-diam lewat refresh token, pengguna tidak terlempar keluar', async () => {
     const t = await setup()
-    const masuk = await t.post('/masuk', { email: 'd@x.id', password: SANDI })
+    const masuk = await t.post('/', { email: 'd@x.id', password: SANDI })
     const sesi = readCookies(t.cookieDari(masuk))
 
     // Access token dirusak, seolah sudah kedaluwarsa; refresh masih sah.
@@ -211,14 +239,14 @@ describe('FR-03 access token kedaluwarsa', () => {
       .map((c) => c.split(';')[0]!).join('; ')
     const res = await t.get('/app', palsu)
     expect(res.status).toBe(303)
-    expect(res.headers.get('location')).toBe('/masuk')
+    expect(res.headers.get('location')).toBe('/')
   })
 })
 
 describe('FR-29 navigasi sidebar', () => {
   it('setiap halaman dashboard memuat sidebar dengan tujuan yang sama', async () => {
     const t = await setup()
-    const cookie = t.cookieDari(await t.post('/masuk', { email: 'd@x.id', password: SANDI }))
+    const cookie = t.cookieDari(await t.post('/', { email: 'd@x.id', password: SANDI }))
     for (const path of ['/app', '/app/undangan', '/app/perusahaan', '/app/tinjauan', '/app/akun']) {
       const page = await (await t.get(path, cookie)).text()
       expect(page).toContain('class="side"')
@@ -230,7 +258,7 @@ describe('FR-29 navigasi sidebar', () => {
 
   it('menandai halaman yang sedang dibuka untuk pembaca layar', async () => {
     const t = await setup()
-    const cookie = t.cookieDari(await t.post('/masuk', { email: 'd@x.id', password: SANDI }))
+    const cookie = t.cookieDari(await t.post('/', { email: 'd@x.id', password: SANDI }))
     const page = await (await t.get('/app/perusahaan', cookie)).text()
     expect(page).toContain('href="/app/perusahaan" aria-current="page"')
     expect(page).not.toContain('href="/app" aria-current="page"')
@@ -238,7 +266,7 @@ describe('FR-29 navigasi sidebar', () => {
 
   it('sidebar menampilkan identitas yang sedang masuk dan tombol keluar', async () => {
     const t = await setup()
-    const cookie = t.cookieDari(await t.post('/masuk', { email: 'd@x.id', password: SANDI }))
+    const cookie = t.cookieDari(await t.post('/', { email: 'd@x.id', password: SANDI }))
     const page = await (await t.get('/app', cookie)).text()
     expect(page).toContain('d@x.id')
     expect(page).toContain('action="/keluar"')

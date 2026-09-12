@@ -53,7 +53,7 @@ async function setup() {
   }
 
   const utama = klien()
-  await utama.post('/masuk', { email: admin.email, password: SANDI })
+  await utama.post('/', { email: admin.email, password: SANDI })
   return { app, repo, admin, kode, raw, klien, get: utama.get, post: utama.post }
 }
 
@@ -91,13 +91,13 @@ describe('FR-04 undangan anggota tim dapat diselesaikan sampai bisa masuk', () =
 
     // 4. Sejak itu ia dapat masuk seperti auditor lain.
     const biasa = t.klien()
-    const login = await biasa.post('/masuk', { email: 'rekan@x.id', password: 'sandiBaruPanjang1' })
+    const login = await biasa.post('/', { email: 'rekan@x.id', password: 'sandiBaruPanjang1' })
     expect(login.headers.get('location')).toBe('/app')
   })
 
   it('halaman masuk menunjuk jalur kode untuk yang belum punya kata sandi', async () => {
     const t = await setup()
-    const page = await (await t.klien().get('/masuk')).text()
+    const page = await (await t.klien().get('/')).text()
     expect(page).toContain('/masuk/kode')
   })
 
@@ -152,7 +152,7 @@ describe('FR-02 halaman akun', () => {
       email: 'biasa@x.id', name: 'Biasa', role: 'auditor', password_hash: hashPassword(SANDI),
     })
     const k = t.klien()
-    await k.post('/masuk', { email: 'biasa@x.id', password: SANDI })
+    await k.post('/', { email: 'biasa@x.id', password: SANDI })
     const page = await (await k.get('/app/akun')).text()
     expect(page).toContain('Hanya admin auditor')
     expect(page).not.toContain('action="/app/akun/undang"')
@@ -168,6 +168,6 @@ describe('FR-02 halaman akun', () => {
     const t = await setup()
     const res = await t.klien().get('/app/akun')
     expect(res.status).toBe(303)
-    expect(res.headers.get('location')).toBe('/masuk')
+    expect(res.headers.get('location')).toBe('/')
   })
 })

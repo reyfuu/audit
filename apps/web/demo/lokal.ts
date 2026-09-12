@@ -215,7 +215,7 @@ ${garis}
 ${garis}
 
   MASUK KE DASHBOARD
-    ${WEB_BASE}/masuk
+    ${WEB_BASE}
     Email      : ${DEMO_EMAIL}
     Kata sandi : ${DEMO_PASSWORD}
 

@@ -63,7 +63,7 @@ async function setup(chat?: ChatClient) {
       body: new URLSearchParams(form).toString(),
     })).then(simpan)
 
-  await post('/masuk', { email: 'd@x.id', password: SANDI })
+  await post('/', { email: 'd@x.id', password: SANDI })
   return { app, repo, auditor, raw, get, post }
 }
 

@@ -27,7 +27,7 @@ export function loginPage(d: { error?: string; email?: string } = {}): string {
   ${d.error
     ? `<div class="banner banner-error" role="alert">${ICONS.awas}<span>${esc(d.error)}</span></div>`
     : ''}
-  <form method="post" action="/masuk">
+  <form method="post" action="/">
     <label class="lbl" for="email">Email</label>
     <input class="field" id="email" name="email" type="email" required autocomplete="username"
            inputmode="email" value="${esc(d.email ?? '')}" placeholder="nama@perusahaan.id">
@@ -48,8 +48,15 @@ export function loginPage(d: { error?: string; email?: string } = {}): string {
 export function loginModule({ raw, publicBase }: LoginDeps) {
   const secure = secureDari(publicBase)
 
-  return new Elysia()
-    .get('/masuk', async ({ headers }) => {
+  /**
+   * Halaman masuk berada di akar situs.
+   *
+   * Itulah alamat yang paling mudah diucapkan dan diketik, dan auditor yang
+   * belum masuk memang tidak punya tujuan lain. Yang sudah punya sesi sah
+   * langsung diteruskan ke dashboard, sehingga akar tidak pernah menjadi
+   * hambatan bagi yang sedang bekerja.
+   */
+  const halamanMasuk = async (headers: Record<string, string | undefined>) => {
       /*
        * Sudah masuk: jangan paksa login ulang.
        *
@@ -63,15 +70,16 @@ export function loginModule({ raw, publicBase }: LoginDeps) {
        * Karena itu sesinya benar-benar diverifikasi. Bila tidak sah, cookie
        * basi dibuang sekalian supaya keadaan ini tidak berulang.
        */
-      if (sesiDari(headers.cookie)) {
-        const aktif = await sessionApi(raw, headers.cookie, secure)
-        if (aktif) return redirect('/app')
-        return html(loginPage(), 200, cookieHapus({ secure }))
-      }
-      return html(loginPage())
-    })
+    if (sesiDari(headers.cookie)) {
+      const aktif = await sessionApi(raw, headers.cookie, secure)
+      if (aktif) return redirect('/app')
+      return html(loginPage(), 200, cookieHapus({ secure }))
+    }
+    return html(loginPage())
+  }
 
-    .post('/masuk', async ({ body }) => {
+  /** Memproses kiriman formulir masuk. */
+  const prosesMasuk = async (body: unknown) => {
       const f = body as Record<string, string>
       const email = String(f.email ?? '').trim()
       const res = await raw('/auth/login', {
@@ -87,7 +95,16 @@ export function loginModule({ raw, publicBase }: LoginDeps) {
       return redirect('/app', cookieSesi(
         { access: sesi.access_token, refresh: sesi.refresh_token }, { secure },
       ))
-    }, { body: t.Any() })
+  }
+
+  return new Elysia()
+    .get('/', ({ headers }) => halamanMasuk(headers))
+    .post('/', ({ body }) => prosesMasuk(body), { body: t.Any() })
+
+    // Alamat lama tetap dilayani: tautan dan bookmark yang sudah beredar,
+    // termasuk yang tercetak di terminal demo, tidak boleh tiba-tiba mati.
+    .get('/masuk', () => redirect('/'))
+    .post('/masuk', ({ body }) => prosesMasuk(body), { body: t.Any() })
 
     .post('/keluar', async ({ headers }) => {
       const sesi = sesiDari(headers.cookie)
@@ -99,6 +116,6 @@ export function loginModule({ raw, publicBase }: LoginDeps) {
           body: JSON.stringify({ refresh_token: sesi.refresh }),
         })
       }
-      return redirect('/masuk', cookieHapus({ secure }))
+      return redirect('/', cookieHapus({ secure }))
     })
 }

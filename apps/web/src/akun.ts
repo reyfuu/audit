@@ -60,7 +60,7 @@ export function kodePage(d: {
            ${ICONS.undangan}Kirim kode</button>
        </form>`}
   <p class="muted" style="margin-top:16px">
-    Sudah punya kata sandi? <a href="/masuk">Masuk dengan kata sandi</a>.</p>
+    Sudah punya kata sandi? <a href="/">Masuk dengan kata sandi</a>.</p>
 </div>`)
 }
 
@@ -116,7 +116,7 @@ export function akunModule({ raw, publicBase }: AkunDeps) {
     // ── Halaman akun: kata sandi dan anggota tim
     .get('/app/akun', async ({ sesi, query }) => {
       const s = await sesi()
-      if (!s) return redirect('/masuk')
+      if (!s) return redirect('/')
       const me = await (await s.api('/auth/me')).json() as Me
       const bolehMengundang = me.role === 'auditor_admin' || me.role === 'sysadmin'
 
@@ -180,7 +180,7 @@ ${bolehMengundang
 
     .post('/app/akun/sandi', async ({ sesi, body }) => {
       const s = await sesi()
-      if (!s) return redirect('/masuk')
+      if (!s) return redirect('/')
       const f = body as Record<string, string>
       const res = await s.api('/auth/password', {
         method: 'POST',
@@ -198,7 +198,7 @@ ${bolehMengundang
 
     .post('/app/akun/undang', async ({ sesi, body }) => {
       const s = await sesi()
-      if (!s) return redirect('/masuk')
+      if (!s) return redirect('/')
       const f = body as Record<string, string>
       const res = await s.api('/auth/invites', {
         method: 'POST',

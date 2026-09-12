@@ -66,7 +66,7 @@ export function auditorModule({ raw, publicBase }: AuditorDeps) {
     // ── Ringkasan: apa yang perlu dikerjakan hari ini
     .get('/app', async ({ sesi }) => {
       const s = await sesi()
-      if (!s) return redirect('/masuk')
+      if (!s) return redirect('/')
       const { api, cookiesBaru } = s
       const [me, invitations] = await Promise.all([profil(api), daftarUndangan(api)])
 
@@ -131,7 +131,7 @@ ${macet.length ? `<div class="card">
     // ── Daftar undangan + penerbitan
     .get('/app/undangan', async ({ sesi, query }) => {
       const s = await sesi()
-      if (!s) return redirect('/masuk')
+      if (!s) return redirect('/')
       const { api, cookiesBaru } = s
       const [me, semua, companies] = await Promise.all([
         profil(api), daftarUndangan(api), daftarPerusahaan(api),
@@ -210,7 +210,7 @@ ${macet.length ? `<div class="card">
     // ── Daftar & penambahan perusahaan
     .get('/app/perusahaan', async ({ sesi, query }) => {
       const s = await sesi()
-      if (!s) return redirect('/masuk')
+      if (!s) return redirect('/')
       const { api, cookiesBaru } = s
       const [me, companies, invitations] = await Promise.all([
         profil(api), daftarPerusahaan(api), daftarUndangan(api),
@@ -295,7 +295,7 @@ ${macet.length ? `<div class="card">
     // ── Tinjauan AI lintas perusahaan (FR-31, FR-32)
     .get('/app/tinjauan', async ({ sesi, query }) => {
       const s = await sesi()
-      if (!s) return redirect('/masuk')
+      if (!s) return redirect('/')
       const { api, cookiesBaru } = s
       const [me, invitations] = await Promise.all([profil(api), daftarUndangan(api)])
       const selesai = invitations.filter((i) => i.status === 'SCORED')
@@ -404,7 +404,7 @@ ${selesai.length === 0
 
     .post('/app/tinjauan/jalankan', async ({ sesi }) => {
       const s = await sesi()
-      if (!s) return redirect('/masuk')
+      if (!s) return redirect('/')
       const res = await s.api('/ai-review/batch', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -421,7 +421,7 @@ ${selesai.length === 0
     // ── Detail undangan dengan QR siap pindai (FR-23, FR-24)
     .get('/app/undangan/:id', async ({ sesi, params, query }) => {
       const s = await sesi()
-      if (!s) return redirect('/masuk')
+      if (!s) return redirect('/')
       const { api, cookiesBaru } = s
       const me = await profil(api)
       const res = await api(`/invitations/${params.id}`)
@@ -552,7 +552,7 @@ ${inv.status === 'SCORED'
     // Proksi gambar QR agar dashboard tidak perlu menyematkan kredensial di HTML.
     .get('/app/undangan/:id/qr.png', async ({ sesi, params, set }) => {
       const s = await sesi()
-      if (!s) return redirect('/masuk')
+      if (!s) return redirect('/')
       const res = await s.api(`/invitations/${params.id}/qr.png`)
       if (!res.ok) { set.status = 404; return 'not found' }
       set.headers['content-type'] = 'image/png'
@@ -562,7 +562,7 @@ ${inv.status === 'SCORED'
 
     .post('/app/undangan', async ({ sesi, body }) => {
       const s = await sesi()
-      if (!s) return redirect('/masuk')
+      if (!s) return redirect('/')
       const f = body as Record<string, string>
       const res = await s.api('/invitations', {
         method: 'POST',
@@ -591,7 +591,7 @@ ${inv.status === 'SCORED'
 
     .post('/app/undangan/:id/reissue', async ({ sesi, params }) => {
       const s = await sesi()
-      if (!s) return redirect('/masuk')
+      if (!s) return redirect('/')
       const res = await s.api(`/invitations/${params.id}/reissue`, { method: 'POST' })
       if (!res.ok) return redirect('/app/undangan')
       const inv = await res.json() as { id: string }
@@ -601,7 +601,7 @@ ${inv.status === 'SCORED'
     // ── FR-31 tinjauan AI untuk satu undangan
     .post('/app/undangan/:id/tinjau', async ({ sesi, params }) => {
       const s = await sesi()
-      if (!s) return redirect('/masuk')
+      if (!s) return redirect('/')
       const inv = await (await s.api(`/invitations/${params.id}`)).json() as Invitation
       // refresh=1: tombol ini selalu berarti "tinjau sekarang", bukan baca cache.
       const res = await s.api(`/assessments/${inv.assessment_id}/ai-review?refresh=1`,
@@ -616,7 +616,7 @@ ${inv.status === 'SCORED'
     // ── FR-18 buat tautan bagikan dari dashboard
     .post('/app/undangan/:id/bagikan', async ({ sesi, params }) => {
       const s = await sesi()
-      if (!s) return redirect('/masuk')
+      if (!s) return redirect('/')
       const inv = await (await s.api(`/invitations/${params.id}`)).json() as Invitation
       await s.api(`/assessments/${inv.assessment_id}/share-links`, {
         method: 'POST',
@@ -628,7 +628,7 @@ ${inv.status === 'SCORED'
 
     .post('/app/bagikan/:id/cabut', async ({ sesi, params, headers }) => {
       const s = await sesi()
-      if (!s) return redirect('/masuk')
+      if (!s) return redirect('/')
       await s.api(`/share-links/${params.id}`, { method: 'DELETE' })
       // Kembali ke halaman asal agar konteks auditor tidak hilang.
       return redirect(headers.referer ?? '/app/undangan')
@@ -637,7 +637,7 @@ ${inv.status === 'SCORED'
     // ── FR-17 unduh PDF lewat dashboard
     .get('/app/undangan/:id/pdf', async ({ sesi, params, set }) => {
       const s = await sesi()
-      if (!s) return redirect('/masuk')
+      if (!s) return redirect('/')
       const inv = await (await s.api(`/invitations/${params.id}`)).json() as Invitation
       const res = await s.api(`/assessments/${inv.assessment_id}/report/pdf`, { method: 'POST' })
       if (!res.ok) {
@@ -656,7 +656,7 @@ ${inv.status === 'SCORED'
 
     .post('/app/perusahaan', async ({ sesi, body }) => {
       const s = await sesi()
-      if (!s) return redirect('/masuk')
+      if (!s) return redirect('/')
       const f = body as Record<string, string>
       await s.api('/companies', {
         method: 'POST',

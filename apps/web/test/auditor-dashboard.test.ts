@@ -64,7 +64,7 @@ async function setup() {
         },
         body: new URLSearchParams(form).toString(),
       })).then(simpan)
-    return { get, post, masuk: (email: string) => post('/masuk', { email, password: SANDI }) }
+    return { get, post, masuk: (email: string) => post('/', { email, password: SANDI }) }
   }
 
   const utama = klien()
