@@ -1,45 +1,52 @@
 # FRD — Functional Requirements Document
-**Produk:** SiapAI · **Versi:** 1.0 · **Tanggal:** 2026-09-12
+**Produk:** SiapAI · **Versi:** 2.0 · **Tanggal:** 2026-09-12
+
+> **Perubahan dari v1.0:** modul pembayaran/paywall dihapus. Ditambahkan modul
+> Undangan & QR Code. Responden (owner) mengisi form tanpa akun, diautentikasi
+> oleh token undangan.
 
 Konvensi: **FR-xx** requirement fungsional, **BR-xx** business rule. Setiap FR punya kriteria penerimaan (AC) yang dapat diuji.
 
 ---
 
 ## 1. Aktor & Peran
-| Peran | Hak |
-|---|---|
-| `guest` | Quick Check, lihat skor ringkas |
-| `member` | Isi assessment, lihat laporan org |
-| `admin` (org) | + undang user, kelola org, beli paket |
-| `owner` (org) | + transfer kepemilikan, hapus org |
-| `partner` | + white-label branding |
-| `sysadmin` | Kelola bank pertanyaan, rubrik, benchmark |
+| Peran | Autentikasi | Hak |
+|---|---|---|
+| `respondent` (owner perusahaan) | Token undangan, **tanpa akun** | Buka form undangannya, isi & kirim jawaban, lihat laporan hasilnya |
+| `auditor` | Akun + JWT | Kelola perusahaan klien, terbitkan/cabut undangan, lihat semua laporan miliknya |
+| `auditor_admin` | Akun + JWT | + kelola anggota tim auditor |
+| `sysadmin` | Akun + JWT | Kelola bank pertanyaan, rubrik, benchmark |
+
+Responden hanya dapat menyentuh assessment yang terikat pada token undangannya. Token tidak memberi akses ke daftar perusahaan atau assessment lain.
 
 Matriks izin (RBAC) diberlakukan di layer API, bukan hanya UI.
 
-## 2. Modul Autentikasi
-**FR-01 Registrasi email + OTP.**
+## 2. Modul Autentikasi (auditor)
+**FR-01 Registrasi auditor via email + OTP.**
 - AC1: Email valid → OTP 6 digit terkirim, berlaku 10 menit, maks 5 percobaan.
 - AC2: OTP salah 5x → akun terkunci 15 menit.
-- AC3: Setelah verifikasi, dibuat `User` dan `Organization` default.
+- AC3: Hanya email yang diundang `auditor_admin` atau terdaftar di allowlist yang dapat mendaftar. Publik tidak bisa membuat akun sendiri.
 
 **FR-02 Login Google OAuth2.** AC: Email sama dengan akun existing → akun ditautkan, bukan duplikat.
 
 **FR-03 Sesi.** AC: Access token JWT 15 menit, refresh token 30 hari rotatif; logout mencabut refresh token.
 
-**FR-04 Undang anggota.** AC: admin mengirim undangan; tautan berlaku 7 hari; peran ditetapkan saat undangan.
+**FR-04 Undang anggota tim auditor.** AC: `auditor_admin` mengirim undangan; tautan berlaku 7 hari; peran ditetapkan saat undangan.
 
-## 3. Modul Organisasi
-**FR-05 Profil organisasi** — field wajib: `name`, `industry`, `employee_band`, `revenue_band`, `country`, `province`.
-- AC: `industry` harus dari enum terkendali (lihat FRD §9); perubahan industri setelah assessment selesai tidak mengubah skor historis.
+## 3. Modul Perusahaan Klien
+**FR-05 Profil perusahaan klien** — field wajib: `name`, `industry`, `employee_band`; opsional `revenue_band`, `country`, `province`.
+- AC1: `industry` harus dari enum terkendali (FRD §9).
+- AC2: Perubahan profil setelah assessment `SCORED` tidak mengubah skor historis.
+- AC3: Perusahaan klien selalu dimiliki oleh satu akun auditor; auditor lain tidak dapat melihatnya.
 
-**FR-06 Multi-organisasi per user.** AC: user dapat menjadi anggota >1 org; konteks org aktif ditentukan header `X-Org-Id`.
+**FR-06 Daftar perusahaan klien.** AC: Auditor hanya melihat perusahaan miliknya sendiri; permintaan ke perusahaan milik auditor lain mengembalikan `404`, bukan `403`, agar keberadaannya tidak bocor.
 
 ## 4. Modul Assessment (inti)
-**FR-07 Mulai assessment.**
-- Input: `type` = `QUICK` | `FULL`, `organization_id`.
+**FR-07 Assessment dibuat bersama undangan.**
+- Assessment tidak dibuat langsung oleh responden, melainkan otomatis saat auditor menerbitkan undangan (FR-23 AC3).
 - AC1: Sistem menyematkan `questionnaire_version` dan `rubric_version` yang aktif saat itu ke assessment (immutable).
-- AC2: Hanya boleh ada 1 assessment berstatus `IN_PROGRESS` per org per type; memulai yang baru mengembalikan 409 dengan id assessment berjalan.
+- AC2: Hanya boleh ada 1 assessment berstatus `IN_PROGRESS` per perusahaan; menerbitkan undangan baru saat masih ada yang aktif mengembalikan `409` beserta id yang berjalan.
+- AC3: Setiap permintaan responden diautentikasi token undangan dan hanya boleh menyentuh assessment yang terikat token tersebut.
 
 **FR-08 Pengambilan pertanyaan bertahap.**
 - AC1: `GET /assessments/{id}/next` mengembalikan satu seksi berisi pertanyaan yang **lolos aturan visibilitas** berdasarkan jawaban terkini.
@@ -91,7 +98,9 @@ Pertanyaan tidak visible dikeluarkan dari pembilang dan penyebut (tidak dihukum)
 - AC2: Bila sampel < 30, fallback ke level `industry` saja; bila masih < 30, tampilkan `benchmark_available: false`, jangan tampilkan angka palsu.
 
 ## 6. Modul Laporan
-**FR-16 Halaman hasil.** Menampilkan: verdict, skor total, radar 7 dimensi, tabel skor & level, benchmark, top rekomendasi, roadmap 3 horizon, confidence.
+**FR-16 Halaman hasil.** Menampilkan: verdict, skor total, radar 7 dimensi, tabel skor & level, benchmark bila tersedia, top rekomendasi, roadmap 3 horizon, confidence.
+- AC1: Dapat diakses responden lewat token undangannya dan oleh auditor pemilik perusahaan.
+- AC2: Seluruh bagian terbuka; tidak ada elemen yang diburamkan atau dikunci (FR-30).
 **FR-17 Ekspor PDF.** AC: Dihasilkan server-side, konten identik halaman hasil, < 10 detik, disimpan ke object storage, tautan unduh berlaku 24 jam.
 **FR-18 Share link.** AC: Token acak 32 byte, read-only, dapat dicabut, opsi kedaluwarsa 7/30/90 hari, opsi sembunyikan nama perusahaan.
 **FR-19 Riwayat & tren.** AC: Grafik garis skor total & per dimensi antar assessment, minimal 2 assessment untuk ditampilkan.
@@ -101,9 +110,46 @@ Pertanyaan tidak visible dikeluarkan dari pembilang dan penyebut (tidak dihukum)
 **FR-21 Versi rubrik.** AC: Versi `PUBLISHED` tidak dapat diubah; hanya bisa dibuat versi baru.
 **FR-22 Preview.** AC: sysadmin dapat menjalankan assessment uji pada versi `DRAFT` tanpa memengaruhi benchmark (`is_test = true`).
 
-## 8. Modul Pembayaran
-**FR-23 Checkout Pro.** AC: Setelah pembayaran `settlement` dari webhook, `entitlement` org diaktifkan; webhook idempoten berdasar `order_id`; verifikasi signature wajib.
-**FR-24 Paywall.** AC: Assessment `FULL` dapat diisi tanpa bayar, tetapi halaman hasil detail & PDF terkunci sampai entitlement aktif.
+## 8. Modul Undangan & QR Code (inti model bisnis v2)
+**FR-23 Terbitkan undangan.**
+- Input: `company_id`, `type` (`FULL`), `expires_in_days` ∈ {7, 30, 90}, default 30.
+- AC1: Sistem membuat token acak ≥ 32 byte dari CSPRNG, menyimpan **hash**-nya, dan hanya mengembalikan token mentah satu kali pada respons pembuatan.
+- AC2: Respons memuat `invitation_url`, `qr_png_url`, `qr_svg_url`, `expires_at`, dan `status = SENT`.
+- AC3: Sistem sekaligus membuat assessment berstatus `IN_PROGRESS` yang terikat pada undangan tersebut, dengan `questionnaire_version` dan `rubric_version` terkunci saat itu.
+- AC4: Satu perusahaan hanya boleh punya satu undangan aktif per siklus; menerbitkan yang baru saat masih ada yang aktif mengembalikan `409` beserta `invitation_id` yang berjalan.
+
+**FR-24 QR code undangan.**
+- AC1: `GET /invitations/{id}/qr.png` dan `.svg` menghasilkan QR berisi `invitation_url` yang sama persis dengan tautan.
+- AC2: QR dapat dipindai kamera bawaan Android dan iOS tanpa aplikasi tambahan; error correction level M, ukuran minimal 256×256 px untuk PNG.
+- AC3: Varian cetak menyertakan nama perusahaan di bawah QR agar tidak tertukar antar klien.
+- AC4: Endpoint QR memerlukan autentikasi auditor. QR tidak boleh dapat ditebak dari `company_id`.
+
+**FR-25 Akses form oleh responden.**
+- AC1: `GET /f/{token}` mengembalikan halaman sambutan: nama perusahaan, nama auditor pengundang, estimasi waktu, dan jumlah pertanyaan.
+- AC2: Pembukaan pertama mengubah status `SENT` → `OPENED` dan mencatat `opened_at`.
+- AC3: Token tidak valid, dicabut, atau kedaluwarsa mengembalikan `404` dengan pesan netral, tanpa membocorkan apakah token pernah ada.
+- AC4: Responden **tidak perlu membuat akun**; token undangan adalah kredensial.
+- AC5: Halaman form diberi header `X-Robots-Tag: noindex, nofollow` agar tidak terindeks mesin pencari.
+
+**FR-26 Melanjutkan lintas perangkat.**
+- AC1: Membuka tautan atau memindai QR yang sama dari perangkat berbeda menampilkan seluruh jawaban yang sudah tersimpan.
+- AC2: Tidak ada penguncian sesi per perangkat; owner boleh mulai di HP dan menyelesaikan di laptop.
+
+**FR-27 Cabut & terbitkan ulang undangan.**
+- AC1: Auditor dapat mencabut undangan; `status = REVOKED` dan seluruh permintaan dengan token tersebut langsung ditolak `404`.
+- AC2: Menerbitkan ulang menghasilkan token dan QR baru, sementara jawaban yang sudah tersimpan tetap dipertahankan pada assessment yang sama.
+
+**FR-28 Kedaluwarsa & pengingat.**
+- AC1: Setelah `expires_at` terlewat, status menjadi `EXPIRED` dan form ditolak, sekalipun pengisian belum selesai.
+- AC2: Sistem mengirim pengingat pada H+3 dan H+7 untuk undangan berstatus `SENT` atau `OPENED` yang belum `SUBMITTED`.
+
+**FR-29 Status undangan untuk dashboard auditor.**
+- AC1: `GET /invitations` mengembalikan daftar milik auditor dengan `status`, `progress.percent`, `opened_at`, `submitted_at`.
+- AC2: Transisi status yang sah: `SENT → OPENED → IN_PROGRESS → SUBMITTED → SCORED`, dengan `REVOKED` dan `EXPIRED` sebagai status terminal yang dapat dicapai dari status mana pun sebelum `SUBMITTED`.
+
+**FR-30 Tidak ada paywall.**
+- AC1: Seluruh bagian laporan dapat diakses oleh responden dan auditor tanpa pembayaran.
+- AC2: Kode error `PAYMENT_REQUIRED` dan status HTTP `402` tidak boleh muncul di mana pun dalam sistem.
 
 ## 9. Enum Terkendali
 `industry`: `manufacturing, retail_ecommerce, fnb, logistics, financial_services, healthcare, education, professional_services, construction_property, agriculture, media_creative, technology, government_public, other`
@@ -125,13 +171,20 @@ Semua error memakai amplop seragam:
 ```json
 { "error": { "code": "INCOMPLETE", "message": "...", "details": { "missing": ["DAT-03"] }, "trace_id": "..." } }
 ```
-Kode: `UNAUTHENTICATED, FORBIDDEN, NOT_FOUND, CONFLICT, INCOMPLETE, INVALID_ANSWER_TYPE, QUESTION_NOT_VISIBLE, RATE_LIMITED, PAYMENT_REQUIRED, INTERNAL`.
+Kode: `UNAUTHENTICATED, FORBIDDEN, NOT_FOUND, CONFLICT, INCOMPLETE, INVALID_ANSWER_TYPE, QUESTION_NOT_VISIBLE, INVITATION_INVALID, RATE_LIMITED, INTERNAL`.
+
+`PAYMENT_REQUIRED` sengaja dihapus dari sistem (FR-30 AC2). `INVITATION_INVALID` dipakai saat token undangan tidak dikenal, dicabut, atau kedaluwarsa; responsnya selalu bergaya netral agar tidak membocorkan keberadaan token.
 
 ## 12. Matriks Telusur
 | FR | Sumber BRD/PRD | Uji |
 |---|---|---|
-| FR-07..FR-13 | G1, F04, PA2 | E2E: isi, tutup, lanjut di device lain |
-| FR-12, BR-01..BR-08 | BA2, PA4 | Unit: property test determinisme |
-| FR-14 | BA3 | Unit: minimal 3 rekomendasi untuk semua profil |
-| FR-16..FR-18 | G2, PA3 | Snapshot PDF vs HTML |
-| FR-15 | F10 | Unit: fallback saat sampel < 30 |
+| FR-23, FR-24 | BA1, PA1, PA2, F03, F04 | Integrasi: terbitkan undangan, pindai isi QR, bandingkan dengan invitation_url |
+| FR-25, FR-26 | BA2, BA5, PA3 | E2E: buka via token, isi sebagian di satu klien, lanjutkan di klien lain |
+| FR-27, FR-28 | F17, PA6 | Integrasi: cabut lalu akses ulang → 404; lewati expires_at → 404 |
+| FR-29 | F15 | Integrasi: status berubah mengikuti aksi responden |
+| FR-30 | BA6, PA4 | Kontrak: tidak ada 402 maupun PAYMENT_REQUIRED di seluruh spec |
+| FR-07..FR-13 | G1, F06, F07 | E2E: isi, tutup, lanjutkan di perangkat lain |
+| FR-12, BR-01..BR-09 | BA3, PA5 | Unit: property test determinisme & monotonicity |
+| FR-14 | BA4 | Unit: minimal 3 rekomendasi untuk semua profil, relevansi, kuota horizon |
+| FR-16..FR-18 | G4, F11, F14 | Snapshot PDF versus HTML |
+| FR-15 | F21 | Unit: fallback saat sampel < 30 |

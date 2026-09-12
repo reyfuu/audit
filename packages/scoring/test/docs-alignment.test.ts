@@ -47,9 +47,10 @@ describe('keselarasan dengan docs/QUESTION_BANK.md', () => {
     }
   })
 
-  it('penanda quick check di kode sama dengan daftar di dokumen', () => {
+  it('penanda pertanyaan inti di kode sama dengan daftar di dokumen', () => {
     const listed = new Set(
-      qb.match(/## Quick Check[\s\S]*?\n`(.+?)`/)![1]!.split(', ').map((s) => s.trim()),
+      qb.match(/## Pertanyaan Inti Penentu Kesiapan[\s\S]*?\n`(.+?)`/)![1]!
+        .split(', ').map((s) => s.trim()),
     )
     for (const q of QN.questions) {
       if (q.unscored) continue

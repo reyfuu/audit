@@ -6,15 +6,23 @@
     "apps/*"
   ],
   "scripts": {
-    "test": "bun test packages && cd tools/spike-elysia && bun test",
+    "test": "bun test packages apps && cd tools/spike-elysia && bun test",
     "test:scoring": "bun test packages/scoring",
     "typecheck": "tsc --noEmit",
     "validate:docs": "python3 tools/validate_docs.py",
     "demo": "bun packages/scoring/demo.ts",
-    "verify": "bun run typecheck && bun run validate:docs && bun run test:scoring"
+    "verify": "bun run typecheck && bun run validate:docs && bun test packages apps",
+    "test:api": "bun test apps/api"
   },
   "devDependencies": {
+    "@types/pngjs": "^6.0.5",
     "bun-types": "^1.4.2",
+    "jsqr": "^1.4.0",
+    "pngjs": "^7.0.0",
     "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "@types/qrcode": "^1.5.6",
+    "qrcode": "^1.5.4"
   }
 }

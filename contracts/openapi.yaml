@@ -1,12 +1,22 @@
 openapi: 3.1.0
 info:
   title: SiapAI — AI Readiness Audit API
-  version: 1.0.0
+  version: 2.0.0
   description: |
     Kontrak API untuk aplikasi audit kesiapan AI bisnis (SiapAI).
     Sumber kebenaran tipe untuk frontend dan backend.
-    Semua endpoint (kecuali /public/*, /auth/*) memerlukan Bearer token.
-    Endpoint ber-scope organisasi memerlukan header `X-Org-Id`.
+
+    Model v2 berbasis undangan:
+    - Auditor login dan menerbitkan undangan assessment untuk perusahaan klien.
+    - Sistem menghasilkan tautan bertoken dan QR code.
+    - Owner perusahaan (responden) mengisi form tanpa akun, diautentikasi token
+      undangan lewat path /f/{token}.
+    - Tidak ada tier gratis, paywall, maupun pembayaran di dalam sistem.
+
+    Autentikasi:
+    - Endpoint auditor memerlukan Bearer token dan header `X-Company-Id` bila
+      ber-scope perusahaan.
+    - Endpoint responden memakai token undangan di path, tanpa Bearer.
   contact: { name: SiapAI Product, email: product@siapai.id }
   license: { name: Proprietary }
 servers:
@@ -15,16 +25,15 @@ servers:
   - { url: 'http://localhost:3001/v1', description: local }
 
 tags:
-  - { name: Auth }
-  - { name: Organizations }
+  - { name: Auth, description: Autentikasi auditor }
+  - { name: Companies, description: Perusahaan klien yang diaudit }
+  - { name: Invitations, description: Penerbitan undangan form dan QR code }
+  - { name: Respondent, description: Pengisian form oleh owner memakai token undangan }
   - { name: Questionnaire }
-  - { name: Assessments }
   - { name: Results }
   - { name: Reports }
   - { name: Benchmark }
-  - { name: Billing }
   - { name: Admin }
-  - { name: Public }
 
 security:
   - bearerAuth: []
@@ -113,54 +122,54 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
 
   # ─────────────────────── Organizations ───────────────────────
-  /organizations:
+  /companies:
     get:
-      tags: [Organizations]
+      tags: [Companies]
       summary: Daftar organisasi milik user
       responses:
         '200':
           description: OK
-          content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Organization' } } } }
+          content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Company' } } } }
     post:
-      tags: [Organizations]
+      tags: [Companies]
       summary: Buat organisasi
       requestBody:
         required: true
-        content: { application/json: { schema: { $ref: '#/components/schemas/OrganizationInput' } } }
+        content: { application/json: { schema: { $ref: '#/components/schemas/CompanyInput' } } }
       responses:
-        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Organization' } } } }
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Company' } } } }
         '422': { $ref: '#/components/responses/UnprocessableEntity' }
 
-  /organizations/{orgId}:
-    parameters: [{ $ref: '#/components/parameters/OrgIdPath' }]
+  /companies/{companyId}:
+    parameters: [{ $ref: '#/components/parameters/CompanyIdPath' }]
     get:
-      tags: [Organizations]
+      tags: [Companies]
       summary: Detail organisasi
       responses:
-        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Organization' } } } }
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Company' } } } }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
     patch:
-      tags: [Organizations]
+      tags: [Companies]
       summary: Perbarui profil organisasi
       requestBody:
         required: true
-        content: { application/json: { schema: { $ref: '#/components/schemas/OrganizationInput' } } }
+        content: { application/json: { schema: { $ref: '#/components/schemas/CompanyInput' } } }
       responses:
-        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Organization' } } } }
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Company' } } } }
         '403': { $ref: '#/components/responses/Forbidden' }
 
-  /organizations/{orgId}/members:
-    parameters: [{ $ref: '#/components/parameters/OrgIdPath' }]
+  /companies/{companyId}/members:
+    parameters: [{ $ref: '#/components/parameters/CompanyIdPath' }]
     get:
-      tags: [Organizations]
+      tags: [Companies]
       summary: Daftar anggota
       responses:
         '200':
           description: OK
           content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Member' } } } }
     post:
-      tags: [Organizations]
+      tags: [Companies]
       summary: Undang anggota
       requestBody:
         required: true
@@ -187,67 +196,151 @@ paths:
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Questionnaire' } } } }
 
-  # ─────────────────────── Assessments ───────────────────────
-  /assessments:
+  # ─────────────────────── Invitations (auditor) ───────────────────────
+  /invitations:
     get:
-      tags: [Assessments]
-      summary: Daftar assessment organisasi aktif
+      tags: [Invitations]
+      summary: Daftar undangan milik auditor beserta statusnya (FR-29)
       parameters:
-        - { $ref: '#/components/parameters/OrgIdHeader' }
-        - { name: status, in: query, schema: { $ref: '#/components/schemas/AssessmentStatus' } }
+        - { name: company_id, in: query, schema: { type: string, format: uuid } }
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/InvitationStatus' }
         - { $ref: '#/components/parameters/Page' }
         - { $ref: '#/components/parameters/PageSize' }
       responses:
-        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/AssessmentPage' } } } }
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Invitation' } }
+                  page: { type: integer }
+                  page_size: { type: integer }
+                  total: { type: integer }
     post:
-      tags: [Assessments]
-      summary: Mulai assessment baru
-      parameters: [{ $ref: '#/components/parameters/OrgIdHeader' }]
+      tags: [Invitations]
+      summary: Terbitkan undangan form untuk owner perusahaan (FR-23)
+      description: |
+        Membuat token undangan sekaligus assessment `IN_PROGRESS` yang terikat
+        padanya. Token mentah HANYA dikembalikan sekali pada respons ini;
+        server menyimpan hash-nya saja.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [type]
+              required: [company_id]
               properties:
-                type: { $ref: '#/components/schemas/AssessmentType' }
+                company_id: { type: string, format: uuid }
+                expires_in_days: { type: integer, enum: [7, 30, 90], default: 30 }
+                recipient_name: { type: string, maxLength: 120 }
+                recipient_email: { type: string, format: email }
       responses:
-        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Assessment' } } } }
+        '201':
+          description: Undangan diterbitkan
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InvitationCreated' }
         '409':
-          description: Sudah ada assessment IN_PROGRESS dengan tipe sama
+          description: Masih ada undangan aktif untuk perusahaan ini (FR-23 AC4)
           content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
 
-  /assessments/{assessmentId}:
-    parameters: [{ $ref: '#/components/parameters/AssessmentIdPath' }, { $ref: '#/components/parameters/OrgIdHeader' }]
+  /invitations/{invitationId}:
+    parameters: [{ $ref: '#/components/parameters/InvitationIdPath' }]
     get:
-      tags: [Assessments]
-      summary: Detail assessment beserta jawaban tersimpan
+      tags: [Invitations]
+      summary: Detail satu undangan
       responses:
-        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/AssessmentDetail' } } } }
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Invitation' } } } }
         '404': { $ref: '#/components/responses/NotFound' }
     delete:
-      tags: [Assessments]
-      summary: Hapus draft (hanya IN_PROGRESS)
+      tags: [Invitations]
+      summary: Cabut undangan (FR-27)
       responses:
-        '204': { description: No Content }
-        '409': { $ref: '#/components/responses/Conflict' }
+        '204': { description: Dicabut; token tidak dapat dipakai lagi }
+        '404': { $ref: '#/components/responses/NotFound' }
 
-  /assessments/{assessmentId}/next:
-    parameters: [{ $ref: '#/components/parameters/AssessmentIdPath' }, { $ref: '#/components/parameters/OrgIdHeader' }]
+  /invitations/{invitationId}/reissue:
+    parameters: [{ $ref: '#/components/parameters/InvitationIdPath' }]
+    post:
+      tags: [Invitations]
+      summary: Terbitkan ulang token & QR, jawaban dipertahankan (FR-27 AC2)
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/InvitationCreated' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /invitations/{invitationId}/qr.png:
+    parameters:
+      - { $ref: '#/components/parameters/InvitationIdPath' }
+      - name: size
+        in: query
+        description: Sisi QR dalam piksel; minimal 256 (FR-24 AC2)
+        schema: { type: integer, minimum: 256, maximum: 2048, default: 512 }
+      - name: print_label
+        in: query
+        description: Sertakan nama perusahaan di bawah QR untuk versi cetak (FR-24 AC3)
+        schema: { type: boolean, default: false }
     get:
-      tags: [Assessments]
-      summary: Ambil seksi berikutnya (pertanyaan yang visible) beserta progres
+      tags: [Invitations]
+      summary: QR code undangan dalam PNG (FR-24)
+      responses:
+        '200':
+          description: Gambar QR
+          content:
+            image/png:
+              schema: { type: string, format: binary }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /invitations/{invitationId}/qr.svg:
+    parameters: [{ $ref: '#/components/parameters/InvitationIdPath' }]
+    get:
+      tags: [Invitations]
+      summary: QR code undangan dalam SVG (FR-24)
+      responses:
+        '200':
+          description: Gambar QR vektor
+          content:
+            image/svg+xml:
+              schema: { type: string }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ─────────────────── Respondent (token undangan, tanpa akun) ───────────────────
+  /f/{token}:
+    parameters: [{ $ref: '#/components/parameters/InvitationTokenPath' }]
+    get:
+      tags: [Respondent]
+      summary: Halaman sambutan form undangan (FR-25)
+      description: |
+        Dipanggil setelah owner mengeklik tautan atau memindai QR.
+        Pembukaan pertama mengubah status SENT menjadi OPENED.
+        Token tidak valid, dicabut, atau kedaluwarsa mengembalikan 404 netral.
+      security: []
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/FormWelcome' } } } }
+        '404': { $ref: '#/components/responses/InvitationInvalid' }
+
+  /f/{token}/next:
+    parameters: [{ $ref: '#/components/parameters/InvitationTokenPath' }]
+    get:
+      tags: [Respondent]
+      summary: Ambil seksi pertanyaan berikutnya beserta progres (FR-08)
+      security: []
       parameters:
-        - { name: section, in: query, description: Ambil seksi tertentu, schema: { type: string, examples: [DAT] } }
+        - { name: section, in: query, schema: { type: string, examples: [DAT] } }
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/SectionPayload' } } } }
+        '404': { $ref: '#/components/responses/InvitationInvalid' }
 
-  /assessments/{assessmentId}/answers:
-    parameters: [{ $ref: '#/components/parameters/AssessmentIdPath' }, { $ref: '#/components/parameters/OrgIdHeader' }]
+  /f/{token}/answers:
+    parameters: [{ $ref: '#/components/parameters/InvitationTokenPath' }]
     patch:
-      tags: [Assessments]
-      summary: Simpan batch jawaban (autosave, idempoten per question_code)
+      tags: [Respondent]
+      summary: Simpan batch jawaban (autosave, idempoten per question_code) (FR-09)
+      security: []
       requestBody:
         required: true
         content:
@@ -268,22 +361,45 @@ paths:
                   client_revision: 12
                   answers:
                     - { question_code: DAT-01, value: { choice: opt_75 } }
-                    - { question_code: DAT-07, value: { choices: [sales_tx, customer, inventory] } }
+                    - { question_code: DAT-07, value: { choices: [sales_tx, customer] } }
                     - { question_code: STR-06, value: { scale: 4 } }
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/SaveResult' } } } }
+        '404': { $ref: '#/components/responses/InvitationInvalid' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/UnprocessableEntity' }
 
-  /assessments/{assessmentId}/submit:
-    parameters: [{ $ref: '#/components/parameters/AssessmentIdPath' }, { $ref: '#/components/parameters/OrgIdHeader' }]
+  /f/{token}/review:
+    parameters: [{ $ref: '#/components/parameters/InvitationTokenPath' }]
+    get:
+      tags: [Respondent]
+      summary: Ringkasan jawaban dan daftar pertanyaan yang masih kosong (FR-11)
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  progress: { $ref: '#/components/schemas/Progress' }
+                  missing: { type: array, items: { type: string } }
+                  answers: { type: array, items: { $ref: '#/components/schemas/Answer' } }
+        '404': { $ref: '#/components/responses/InvitationInvalid' }
+
+  /f/{token}/submit:
+    parameters: [{ $ref: '#/components/parameters/InvitationTokenPath' }]
     post:
-      tags: [Assessments]
-      summary: Submit dan jalankan skoring
+      tags: [Respondent]
+      summary: Kirim jawaban dan jalankan skoring (FR-12)
+      security: []
       responses:
         '200': { description: Selesai diskor, content: { application/json: { schema: { $ref: '#/components/schemas/ScoreResult' } } } }
+        '404': { $ref: '#/components/responses/InvitationInvalid' }
+        '409': { $ref: '#/components/responses/Conflict' }
         '422':
-          description: Ada pertanyaan wajib yang belum dijawab
+          description: Masih ada pertanyaan wajib yang belum dijawab
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorEnvelope' }
@@ -296,19 +412,59 @@ paths:
                       details: { missing: [DAT-03, GOV-02] }
                       trace_id: 0f1c2d3e
 
+  /f/{token}/result:
+    parameters: [{ $ref: '#/components/parameters/InvitationTokenPath' }]
+    get:
+      tags: [Respondent]
+      summary: Hasil audit untuk responden, terbuka penuh tanpa paywall (FR-16, FR-30)
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result: { $ref: '#/components/schemas/ScoreResult' }
+                  recommendations: { $ref: '#/components/schemas/RecommendationBundle' }
+        '404': { $ref: '#/components/responses/InvitationInvalid' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  # ─────────────────────── Assessments (auditor) ───────────────────────
+  /assessments:
+    get:
+      tags: [Results]
+      summary: Daftar assessment perusahaan
+      parameters:
+        - { $ref: '#/components/parameters/CompanyIdHeader' }
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/AssessmentStatus' } }
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/PageSize' }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/AssessmentPage' } } } }
+
+  /assessments/{assessmentId}:
+    parameters: [{ $ref: '#/components/parameters/AssessmentIdPath' }, { $ref: '#/components/parameters/CompanyIdHeader' }]
+    get:
+      tags: [Results]
+      summary: Detail assessment beserta jawaban tersimpan
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/AssessmentDetail' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   # ───────────────────────── Results ─────────────────────────
   /assessments/{assessmentId}/result:
-    parameters: [{ $ref: '#/components/parameters/AssessmentIdPath' }, { $ref: '#/components/parameters/OrgIdHeader' }]
+    parameters: [{ $ref: '#/components/parameters/AssessmentIdPath' }, { $ref: '#/components/parameters/CompanyIdHeader' }]
     get:
       tags: [Results]
       summary: Hasil skoring lengkap
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/ScoreResult' } } } }
-        '402': { $ref: '#/components/responses/PaymentRequired' }
         '404': { $ref: '#/components/responses/NotFound' }
 
   /assessments/{assessmentId}/recommendations:
-    parameters: [{ $ref: '#/components/parameters/AssessmentIdPath' }, { $ref: '#/components/parameters/OrgIdHeader' }]
+    parameters: [{ $ref: '#/components/parameters/AssessmentIdPath' }, { $ref: '#/components/parameters/CompanyIdHeader' }]
     get:
       tags: [Results]
       summary: Rekomendasi berprioritas dan roadmap
@@ -317,8 +473,8 @@ paths:
           description: OK
           content: { application/json: { schema: { $ref: '#/components/schemas/RecommendationBundle' } } }
 
-  /organizations/{orgId}/trend:
-    parameters: [{ $ref: '#/components/parameters/OrgIdPath' }]
+  /companies/{companyId}/trend:
+    parameters: [{ $ref: '#/components/parameters/CompanyIdPath' }]
     get:
       tags: [Results]
       summary: Tren skor antar assessment
@@ -329,13 +485,12 @@ paths:
 
   # ───────────────────────── Reports ─────────────────────────
   /assessments/{assessmentId}/report/pdf:
-    parameters: [{ $ref: '#/components/parameters/AssessmentIdPath' }, { $ref: '#/components/parameters/OrgIdHeader' }]
+    parameters: [{ $ref: '#/components/parameters/AssessmentIdPath' }, { $ref: '#/components/parameters/CompanyIdHeader' }]
     post:
       tags: [Reports]
       summary: Minta pembuatan PDF (asinkron)
       responses:
         '202': { description: Antrean dibuat, content: { application/json: { schema: { $ref: '#/components/schemas/ReportJob' } } } }
-        '402': { $ref: '#/components/responses/PaymentRequired' }
 
   /reports/jobs/{jobId}:
     parameters: [{ name: jobId, in: path, required: true, schema: { type: string, format: uuid } }]
@@ -346,7 +501,7 @@ paths:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/ReportJob' } } } }
 
   /assessments/{assessmentId}/share-links:
-    parameters: [{ $ref: '#/components/parameters/AssessmentIdPath' }, { $ref: '#/components/parameters/OrgIdHeader' }]
+    parameters: [{ $ref: '#/components/parameters/AssessmentIdPath' }, { $ref: '#/components/parameters/CompanyIdHeader' }]
     post:
       tags: [Reports]
       summary: Buat tautan berbagi read-only
@@ -368,36 +523,6 @@ paths:
       summary: Cabut tautan berbagi
       responses: { '204': { description: No Content } }
 
-  # ───────────────────────── Public ─────────────────────────
-  /public/quick-check:
-    post:
-      tags: [Public]
-      summary: Quick Check tanpa login, langsung kembalikan skor ringkas
-      security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [answers]
-              properties:
-                email: { type: string, format: email }
-                answers: { type: array, items: { $ref: '#/components/schemas/AnswerInput' } }
-      responses:
-        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/QuickCheckResult' } } } }
-        '429': { $ref: '#/components/responses/RateLimited' }
-
-  /public/shared/{token}:
-    get:
-      tags: [Public]
-      summary: Lihat laporan yang dibagikan
-      security: []
-      parameters: [{ name: token, in: path, required: true, schema: { type: string } }]
-      responses:
-        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/SharedReport' } } } }
-        '404': { $ref: '#/components/responses/NotFound' }
-
   # ─────────────────────── Benchmark ───────────────────────
   /benchmark:
     get:
@@ -408,54 +533,6 @@ paths:
         - { name: employee_band, in: query, schema: { $ref: '#/components/schemas/EmployeeBand' } }
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Benchmark' } } } }
-
-  # ─────────────────────── Billing ───────────────────────
-  /billing/checkout:
-    post:
-      tags: [Billing]
-      summary: Buat sesi pembayaran (Midtrans Snap)
-      parameters: [{ $ref: '#/components/parameters/OrgIdHeader' }]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [plan]
-              properties:
-                plan: { type: string, enum: [PRO_SINGLE, TEAM_ANNUAL] }
-                assessment_id: { type: string, format: uuid }
-      responses:
-        '201':
-          description: Created
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  order_id: { type: string }
-                  snap_token: { type: string }
-                  redirect_url: { type: string, format: uri }
-
-  /billing/webhook:
-    post:
-      tags: [Billing]
-      summary: Webhook status pembayaran (idempoten, signature diverifikasi)
-      security: []
-      requestBody:
-        required: true
-        content: { application/json: { schema: { type: object, additionalProperties: true } } }
-      responses:
-        '204': { description: Diterima }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-
-  /billing/entitlements:
-    get:
-      tags: [Billing]
-      summary: Hak akses organisasi saat ini
-      parameters: [{ $ref: '#/components/parameters/OrgIdHeader' }]
-      responses:
-        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Entitlement' } } } }
 
   # ───────────────────────── Admin ─────────────────────────
   /admin/questionnaires:
@@ -516,14 +593,14 @@ components:
     bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
 
   parameters:
-    OrgIdHeader:
-      name: X-Org-Id
+    CompanyIdHeader:
+      name: X-Company-Id
       in: header
       required: true
       description: Organisasi aktif untuk permintaan ini
       schema: { type: string, format: uuid }
-    OrgIdPath:
-      name: orgId
+    CompanyIdPath:
+      name: companyId
       in: path
       required: true
       schema: { type: string, format: uuid }
@@ -532,6 +609,17 @@ components:
       in: path
       required: true
       schema: { type: string, format: uuid }
+    InvitationIdPath:
+      name: invitationId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    InvitationTokenPath:
+      name: token
+      in: path
+      required: true
+      description: Token undangan dari tautan atau hasil pindai QR
+      schema: { type: string, minLength: 32 }
     Page:
       name: page
       in: query
@@ -560,8 +648,10 @@ components:
     RateLimited:
       description: Terlalu banyak permintaan
       content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
-    PaymentRequired:
-      description: Perlu paket berbayar
+    InvitationInvalid:
+      description: |
+        Token undangan tidak dikenal, sudah dicabut, atau kedaluwarsa.
+        Pesan sengaja netral agar tidak membocorkan keberadaan token (FR-25 AC3).
       content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
 
   schemas:
@@ -576,8 +666,8 @@ components:
             code:
               type: string
               enum: [UNAUTHENTICATED, FORBIDDEN, NOT_FOUND, CONFLICT, INCOMPLETE,
-                     INVALID_ANSWER_TYPE, QUESTION_NOT_VISIBLE, RATE_LIMITED,
-                     PAYMENT_REQUIRED, INTERNAL]
+                     INVALID_ANSWER_TYPE, QUESTION_NOT_VISIBLE, INVITATION_INVALID,
+                     RATE_LIMITED, INTERNAL]
             message: { type: string }
             details: { type: object, additionalProperties: true }
             trace_id: { type: string }
@@ -611,7 +701,7 @@ components:
           items:
             type: object
             properties:
-              organization: { $ref: '#/components/schemas/Organization' }
+              organization: { $ref: '#/components/schemas/Company' }
               role: { $ref: '#/components/schemas/Role' }
 
     Industry:
@@ -628,7 +718,7 @@ components:
       type: string
       enum: [under_2_5b, 2_5b_15b, 15b_50b, 50b_250b, 250b_plus, undisclosed]
 
-    OrganizationInput:
+    CompanyInput:
       type: object
       required: [name, industry, employee_band]
       properties:
@@ -639,9 +729,9 @@ components:
         country: { type: string, default: ID }
         province: { type: string }
 
-    Organization:
+    Company:
       allOf:
-        - $ref: '#/components/schemas/OrganizationInput'
+        - $ref: '#/components/schemas/CompanyInput'
         - type: object
           properties:
             id: { type: string, format: uuid }
@@ -734,14 +824,77 @@ components:
         status: { type: string, enum: [DRAFT, PUBLISHED, ARCHIVED] }
         published_at: { type: string, format: date-time }
 
-    AssessmentType: { type: string, enum: [QUICK, FULL] }
+    InvitationStatus:
+      type: string
+      enum: [SENT, OPENED, IN_PROGRESS, SUBMITTED, SCORED, REVOKED, EXPIRED]
+      description: |
+        Transisi sah: SENT -> OPENED -> IN_PROGRESS -> SUBMITTED -> SCORED.
+        REVOKED dan EXPIRED adalah status terminal yang dapat dicapai dari
+        status mana pun sebelum SUBMITTED (FR-29 AC2).
+
+    Invitation:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        company_id: { type: string, format: uuid }
+        company_name: { type: string }
+        assessment_id: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/InvitationStatus' }
+        recipient_name: { type: string }
+        recipient_email: { type: string, format: email }
+        progress: { $ref: '#/components/schemas/Progress' }
+        issued_at: { type: string, format: date-time }
+        opened_at: { type: string, format: date-time, nullable: true }
+        submitted_at: { type: string, format: date-time, nullable: true }
+        expires_at: { type: string, format: date-time }
+        reminder_count: { type: integer }
+
+    InvitationCreated:
+      allOf:
+        - $ref: '#/components/schemas/Invitation'
+        - type: object
+          description: |
+            `token` dan `invitation_url` hanya dikembalikan sekali, saat
+            penerbitan atau penerbitan ulang. Server menyimpan hash token
+            saja, sehingga nilai ini tidak dapat diambil kembali (FR-23 AC1).
+          properties:
+            token: { type: string }
+            invitation_url:
+              type: string
+              format: uri
+              examples: ['https://siapai.id/f/8f3a...c21']
+            qr_png_url:
+              type: string
+              format: uri
+              description: Endpoint QR siap unduh atau cetak
+            qr_svg_url: { type: string, format: uri }
+
+    FormWelcome:
+      type: object
+      description: Halaman sambutan yang dilihat owner setelah memindai QR (FR-25 AC1)
+      properties:
+        company_name: { type: string }
+        invited_by: { type: string, description: Nama auditor pengundang }
+        total_questions: { type: integer }
+        estimated_minutes: { type: integer, examples: [22] }
+        status: { $ref: '#/components/schemas/InvitationStatus' }
+        progress: { $ref: '#/components/schemas/Progress' }
+        expires_at: { type: string, format: date-time }
+        resume: { type: boolean, description: true bila sudah ada jawaban tersimpan }
+
+    AssessmentType:
+      type: string
+      enum: [FULL]
+      description: |
+        v2 hanya memiliki satu jenis audit penuh. Tier QUICK gratis dihapus
+        bersama model self-serve.
     AssessmentStatus: { type: string, enum: [IN_PROGRESS, SUBMITTED, SCORED, ARCHIVED] }
 
     Assessment:
       type: object
       properties:
         id: { type: string, format: uuid }
-        organization_id: { type: string, format: uuid }
+        company_id: { type: string, format: uuid }
         type: { $ref: '#/components/schemas/AssessmentType' }
         status: { $ref: '#/components/schemas/AssessmentStatus' }
         questionnaire_version: { type: string }
@@ -908,7 +1061,6 @@ components:
               p50: { type: number }
               p75: { type: number }
 
-    QuickCheckResult:
       type: object
       properties:
         total_score: { type: number }
@@ -941,10 +1093,9 @@ components:
         result: { $ref: '#/components/schemas/ScoreResult' }
         recommendations: { $ref: '#/components/schemas/RecommendationBundle' }
 
-    Entitlement:
       type: object
       properties:
-        organization_id: { type: string, format: uuid }
+        company_id: { type: string, format: uuid }
         plan: { type: string, enum: [FREE, PRO_SINGLE, TEAM_ANNUAL, PARTNER] }
         status: { type: string, enum: [ACTIVE, EXPIRED, PENDING] }
         valid_until: { type: string, format: date-time, nullable: true }

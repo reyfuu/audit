@@ -303,17 +303,19 @@ describe('BR-09 confidence', () => {
   })
 })
 
-describe('PRD F03 mode QUICK', () => {
-  it('hanya menghitung pertanyaan berskor yang ditandai quick check', () => {
+describe('mode QUICK: ringkasan cepat dari pertanyaan inti', () => {
+  it('hanya menghitung pertanyaan yang ditandai inti', () => {
     const r = score({ answers: answerAll(QN, 'highest'), questionnaire: QN, mode: 'QUICK' })
     const expected = QN.questions.filter((x) => x.in_quick_check).length
     expect(r.breakdown.length).toBe(expected)
-    // QUESTION_BANK §Quick Check: 15 pertanyaan = 13 berskor + ORG-02 & ORG-03
-    // yang merupakan profil organisasi dan tidak ikut diskor.
+    // QUESTION_BANK: 13 pertanyaan inti berskor, ditambah profil ORG-02 & ORG-03
+    // menjadi 15 pertanyaan pembuka form. Dipakai untuk ringkasan progres di
+    // dashboard auditor ketika responden berhenti di tengah (BRD v2), bukan
+    // sebagai produk gratis terpisah.
     expect(expected).toBe(13)
   })
 
-  it('daftar quick check persis sama dengan QUESTION_BANK.md', () => {
+  it('daftar pertanyaan inti persis sama dengan QUESTION_BANK.md', () => {
     const actual = QN.questions.filter((x) => x.in_quick_check).map((x) => x.code).sort()
     expect(actual).toEqual([
       'DAT-01', 'DAT-02', 'DAT-03', 'DAT-04', 'FIN-02', 'GOV-01', 'PPL-01',

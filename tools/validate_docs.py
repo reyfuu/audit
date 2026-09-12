@@ -85,11 +85,15 @@ check("R9a","Kode pertanyaan unik", not dupes, f"{len(codes)} pertanyaan berskor
 check("R9b","Prefix kode pertanyaan = dimensi valid", all(c[:3] in DIMS for c in codes),
       f"prefix tidak valid={[c for c in codes if c[:3] not in DIMS]}")
 
-# ── R10 Quick Check = 15 pertanyaan (PRD F03) dan semua kodenya ada
-qc = re.search(r"## Quick Check.*?\n`(.+?)`", DOCS["QB"], re.S).group(1).split(", ")
+# ── R10 pertanyaan inti penentu kesiapan terdefinisi dan konsisten
+m = re.search(r"## Pertanyaan Inti Penentu Kesiapan.*?\n`(.+?)`", DOCS["QB"], re.S)
+core = m.group(1).split(", ") if m else []
 known = set(codes) | {"ORG-01","ORG-02","ORG-03","ORG-04","ORG-05","ORG-06"}
-check("R10a","Quick Check tepat 15 pertanyaan (PRD F03)", len(qc)==15, f"jumlah={len(qc)}")
-check("R10b","Semua kode Quick Check terdefinisi", set(qc) <= known, f"tidak dikenal={set(qc)-known}")
+check("R10a","Ada daftar pertanyaan inti penentu kesiapan", len(core) > 0, f"jumlah={len(core)}")
+check("R10b","Semua kode pertanyaan inti terdefinisi", set(core) <= known, f"tidak dikenal={set(core)-known}")
+marked = {c for c in re.findall(r"\*\*([A-Z]{3}-\d{2}) \([A-Z0-9]+, w=\d+, Q\)", DOCS["QB"])}
+check("R10c","Penanda Q di daftar pertanyaan sama dengan daftar inti", marked == set(core),
+      f"hanya-penanda={marked-set(core)} hanya-daftar={set(core)-marked}")
 
 # ── R11 tiap pertanyaan yang dirujuk aturan rekomendasi memang ada
 rec_refs = set(re.findall(r"`([A-Z]{3}-\d{2}) [≤=]", DOCS["QB"]))
@@ -130,18 +134,22 @@ check("R16","Semua tautan README valid", not broken, f"{len(links)} tautan, rusa
 
 # ── R17 endpoint yang dijanjikan FRD benar-benar ada di kontrak
 required_paths = {
-    "/assessments": "FR-07 mulai assessment",
-    "/assessments/{assessmentId}/next": "FR-08 ambil pertanyaan",
-    "/assessments/{assessmentId}/answers": "FR-09 autosave",
-    "/assessments/{assessmentId}/submit": "FR-12 submit",
-    "/assessments/{assessmentId}/result": "FR-16 halaman hasil",
-    "/assessments/{assessmentId}/recommendations": "FR-14 rekomendasi",
+    "/invitations": "FR-23 terbitkan undangan",
+    "/invitations/{invitationId}": "FR-27 cabut undangan",
+    "/invitations/{invitationId}/reissue": "FR-27 AC2 terbitkan ulang",
+    "/invitations/{invitationId}/qr.png": "FR-24 QR PNG",
+    "/invitations/{invitationId}/qr.svg": "FR-24 QR SVG",
+    "/f/{token}": "FR-25 halaman sambutan form responden",
+    "/f/{token}/next": "FR-08 ambil pertanyaan",
+    "/f/{token}/answers": "FR-09 autosave",
+    "/f/{token}/review": "FR-11 review sebelum kirim",
+    "/f/{token}/submit": "FR-12 submit",
+    "/f/{token}/result": "FR-16 hasil untuk responden",
+    "/assessments": "daftar assessment untuk auditor",
     "/assessments/{assessmentId}/report/pdf": "FR-17 ekspor PDF",
     "/assessments/{assessmentId}/share-links": "FR-18 share link",
-    "/organizations/{orgId}/trend": "FR-19 riwayat & tren",
+    "/companies/{companyId}/trend": "FR-19 riwayat & tren",
     "/benchmark": "FR-15 benchmark",
-    "/billing/checkout": "FR-23 pembayaran",
-    "/public/quick-check": "PRD F03 quick check",
     "/admin/questionnaires": "FR-20 CMS",
 }
 for p, why in required_paths.items():
@@ -155,44 +163,58 @@ def has_response(path, method, code):
     except KeyError:
         return False, f"path/method hilang: {method.upper()} {path}"
 
-ok, obs = has_response("/assessments/{assessmentId}/submit", "post", "422")
+ok, obs = has_response("/f/{token}/submit", "post", "422")
 check("R18a","Submit mengembalikan 422 INCOMPLETE (FR-12 AC1)", ok, obs)
-ok, obs = has_response("/assessments", "post", "409")
-check("R18b","Mulai assessment mengembalikan 409 (FR-07 AC2)", ok, obs)
-ok, obs = has_response("/assessments/{assessmentId}/result", "get", "402")
-check("R18c","Result mengembalikan 402 saat paywall (FR-24)", ok, obs)
+ok, obs = has_response("/invitations", "post", "409")
+check("R18b","Terbitkan undangan mengembalikan 409 saat masih ada yang aktif (FR-23 AC4)", ok, obs)
+ok, obs = has_response("/f/{token}", "get", "404")
+check("R18c","Token tidak valid/dicabut mengembalikan 404 netral (FR-25 AC3)", ok, obs)
 
-# ── R19 endpoint publik tidak mewajibkan auth; endpoint privat mewajibkan
-# /auth/logout sengaja dikecualikan: mencabut refresh token milik pemanggil,
-# sehingga wajib terautentikasi meski berada di bawah prefix /auth.
+# ── R19 model auth v2: jalur responden /f/{token} tidak memakai Bearer
+# (token undangan adalah kredensialnya), sisanya wajib Bearer.
+# /auth/logout dan /me tetap butuh Bearer meski berada di bawah /auth.
 AUTHENTICATED_AUTH_PATHS = {"/auth/logout", "/me"}
-pub_ok, priv_ok = [], []
+token_auth, priv_ok = [], []
 for path, item in SPEC["paths"].items():
     for method, op in item.items():
         if method not in ("get","post","patch","put","delete"): continue
-        is_public = (path.startswith("/public") or path == "/billing/webhook"
-                     or (path.startswith("/auth") and path not in AUTHENTICATED_AUTH_PATHS))
+        is_token_path = path.startswith("/f/{token}")
+        is_public = is_token_path or (path.startswith("/auth") and path not in AUTHENTICATED_AUTH_PATHS)
         has_override = op.get("security") == []
-        if is_public and not has_override: pub_ok.append(f"{method} {path}")
+        if is_public and not has_override: token_auth.append(f"{method} {path}")
         if not is_public and has_override: priv_ok.append(f"{method} {path}")
-check("R19a","Endpoint publik memakai security: []", not pub_ok, f"pelanggaran={pub_ok}")
-check("R19b","Endpoint privat tidak melewati auth", not priv_ok, f"pelanggaran={priv_ok}")
+check("R19a","Jalur responden /f/{token} memakai security: [] (FR-25 AC4)", not token_auth,
+      f"pelanggaran={token_auth}")
+check("R19b","Endpoint auditor tidak melewati auth", not priv_ok, f"pelanggaran={priv_ok}")
 check("R19c","/auth/logout & /me tetap mewajibkan auth",
       all(SPEC["paths"][p][m].get("security") != []
           for p in AUTHENTICATED_AUTH_PATHS for m in SPEC["paths"][p]
           if m in ("get","post")),
       "logout dan /me terlindungi")
+check("R19d","Endpoint QR memerlukan auth auditor (FR-24 AC4)",
+      all(SPEC["paths"][p]["get"].get("security") != []
+          for p in ("/invitations/{invitationId}/qr.png", "/invitations/{invitationId}/qr.svg")),
+      "QR tidak dapat diakses anonim")
 
-# ── R20 endpoint ber-scope org mewajibkan header X-Org-Id (TRD tenant isolation)
+# ── R20 endpoint auditor ber-scope perusahaan mewajibkan X-Company-Id
 def params_of(path, op):
     return [p.get("$ref","") for p in (SPEC["paths"][path].get("parameters",[]) + op.get("parameters",[]))]
-org_scoped = [p for p in SPEC["paths"] if p.startswith("/assessments")]
+scoped = [p for p in SPEC["paths"] if p.startswith("/assessments")]
 miss = []
-for p in org_scoped:
+for p in scoped:
     for m, op in SPEC["paths"][p].items():
-        if m in ("get","post","patch","delete") and "OrgIdHeader" not in " ".join(params_of(p, op)):
+        if m in ("get","post","patch","delete") and "CompanyIdHeader" not in " ".join(params_of(p, op)):
             miss.append(f"{m} {p}")
-check("R20","Endpoint /assessments mewajibkan X-Org-Id", not miss, f"kurang={miss}")
+check("R20a","Endpoint /assessments mewajibkan X-Company-Id", not miss, f"kurang={miss}")
+
+# Jalur responden justru TIDAK boleh menuntut X-Company-Id: owner tidak tahu id
+# internal dan tidak punya akun. Scope ditentukan oleh token undangan saja.
+leak = []
+for p in [x for x in SPEC["paths"] if x.startswith("/f/{token}")]:
+    for m, op in SPEC["paths"][p].items():
+        if m in ("get","post","patch","delete") and "CompanyIdHeader" in " ".join(params_of(p, op)):
+            leak.append(f"{m} {p}")
+check("R20b","Jalur responden tidak menuntut X-Company-Id", not leak, f"pelanggaran={leak}")
 
 # ── R21 mermaid diagram seimbang (setiap ``` mermaid ditutup)
 for name in ("BRD","PRD","TRD","DESIGN"):
@@ -228,6 +250,61 @@ check("R23c", "ADR mencatat keputusan pergantian backend",
 
 check("R23d", "Struktur repo TRD menyebut apps/api Elysia",
       "apps/api        Elysia" in DOCS["TRD"], "tercantum di §12")
+
+# ── R24 model v2: tidak ada paywall di mana pun (FR-30, BA6, PA4)
+check("R24a", "Tidak ada respons 402 di seluruh kontrak",
+      "402" not in {c for it in SPEC["paths"].values() for op in it.values()
+                    if isinstance(op, dict) for c in op.get("responses", {})},
+      "tidak ada status 402")
+check("R24b", "PAYMENT_REQUIRED tidak ada di enum error",
+      "PAYMENT_REQUIRED" not in SPEC["components"]["schemas"]["ErrorEnvelope"]
+        ["properties"]["error"]["properties"]["code"]["enum"],
+      "kode pembayaran sudah dihapus")
+check("R24c", "Tidak ada schema pembayaran tersisa",
+      not {"Entitlement", "QuickCheckResult"} & set(SPEC["components"]["schemas"]),
+      "Entitlement & QuickCheckResult sudah dihapus")
+paywall_words = ["Midtrans", "checkout", "paywall", "Paywall", "entitlement", "tier gratis", "Quick Check"]
+leftovers = []
+for name, text in DOCS.items():
+    for i, line in enumerate(text.splitlines(), 1):
+        if any(w in line for w in paywall_words) and not any(
+            a in line for a in ("dihapus", "Dihapus", "dibatalkan", "tidak ada", "Tidak ada",
+                                "tidak boleh", "Perubahan dari")):
+            leftovers.append(f"{name}:{i}")
+check("R24d", "Dokumen tidak menyisakan konsep berbayar/tier gratis", not leftovers,
+      f"baris bermasalah={leftovers}")
+
+# ── R25 alur undangan & QR konsisten (FR-23..FR-29)
+inv = SPEC["components"]["schemas"]["InvitationStatus"]["enum"]
+check("R25a", "Status undangan lengkap sesuai FR-29 AC2",
+      set(inv) == {"SENT","OPENED","IN_PROGRESS","SUBMITTED","SCORED","REVOKED","EXPIRED"},
+      f"{inv}")
+created = SPEC["components"]["schemas"]["InvitationCreated"]["allOf"][1]["properties"]
+check("R25b", "Respons penerbitan memuat token, tautan, dan kedua format QR",
+      {"token","invitation_url","qr_png_url","qr_svg_url"} <= set(created),
+      f"{sorted(created)}")
+check("R25c", "QR tersedia dalam PNG dan SVG (FR-24 AC1)",
+      "image/png" in str(SPEC["paths"]["/invitations/{invitationId}/qr.png"]["get"]["responses"])
+      and "image/svg+xml" in str(SPEC["paths"]["/invitations/{invitationId}/qr.svg"]["get"]["responses"]),
+      "kedua format tersedia")
+check("R25d", "QR PNG punya ukuran minimal 256 px (FR-24 AC2)",
+      any(p.get("name") == "size" and p["schema"].get("minimum") == 256
+          for p in SPEC["paths"]["/invitations/{invitationId}/qr.png"].get("parameters", [])),
+      "parameter size minimum 256")
+check("R25e", "Ada opsi label cetak agar QR tidak tertukar antar klien (FR-24 AC3)",
+      any(p.get("name") == "print_label"
+          for p in SPEC["paths"]["/invitations/{invitationId}/qr.png"].get("parameters", [])),
+      "parameter print_label tersedia")
+check("R25f", "Semua path responden memakai token undangan di path",
+      all(p.startswith("/f/{token}") for p in SPEC["paths"] if p.startswith("/f/")),
+      "jalur responden konsisten")
+for frd_code in ["FR-23", "FR-24", "FR-25", "FR-26", "FR-27", "FR-28", "FR-29", "FR-30"]:
+    check("R25g", f"{frd_code} terdokumentasi di FRD", frd_code in DOCS["FRD"],
+          "ada" if frd_code in DOCS["FRD"] else "HILANG")
+check("R25h", "PRD menjelaskan QR dan pengisian lewat HP",
+      "QR" in DOCS["PRD"] and "Mobile-First" in DOCS["PRD"], "bagian QR & mobile-first ada")
+check("R25i", "BRD menjelaskan model undangan menggantikan self-serve",
+      "undangan" in DOCS["BRD"] and "QR" in DOCS["BRD"], "model baru terdokumentasi")
 
 # ── laporan
 w1 = max(len(r[0]) for r in results)

@@ -82,17 +82,16 @@ Breakpoint sm 640 · md 768 · lg 1024 · xl 1280
 ### B3. Peta layar
 | Layar | Rute | Isi utama |
 |---|---|---|
-| Landing | `/` | Proposisi nilai, CTA Quick Check |
-| Quick Check | `/quick` | 15 pertanyaan, satu per layar |
-| Hasil ringkas | `/quick/result` | Skor total, CTA daftar |
-| Onboarding org | `/onboarding` | Profil organisasi |
-| Dashboard | `/app` | Kartu skor terakhir, tombol assessment baru, tren |
-| Assessment | `/app/assessments/{id}` | Form per dimensi, sidebar progres |
-| Review | `/app/assessments/{id}/review` | Daftar jawaban + yang kosong |
-| Hasil | `/app/assessments/{id}/result` | Radar, dimensi, rekomendasi, roadmap |
-| Riwayat | `/app/history` | Tabel + grafik tren |
-| Anggota | `/app/settings/members` | RBAC |
-| Admin CMS | `/admin/questionnaires` | Kelola konten |
+| **Form sambutan (responden)** | `/f/{token}` | Nama perusahaan, pengundang, estimasi waktu, tombol mulai atau lanjutkan |
+| **Form pengisian (responden)** | `/f/{token}/isi` | Satu pertanyaan per layar, mobile-first |
+| **Review (responden)** | `/f/{token}/review` | Daftar jawaban dan yang masih kosong |
+| **Hasil (responden)** | `/f/{token}/hasil` | Radar, dimensi, rekomendasi, roadmap, terbuka penuh |
+| Login auditor | `/masuk` | Email + OTP |
+| Dashboard auditor | `/app` | Daftar undangan beserta status dan progres |
+| Perusahaan klien | `/app/perusahaan/{id}` | Profil, riwayat audit, tren |
+| **Terbitkan undangan** | `/app/perusahaan/{id}/undang` | Form penerbitan, menampilkan tautan + QR siap unduh |
+| Hasil (auditor) | `/app/assessments/{id}/hasil` | Sama dengan tampilan responden, plus catatan auditor |
+| Admin CMS | `/admin/questionnaires` | Kelola konten berversi |
 
 ### B4. Tata letak layar assessment
 ```
@@ -164,7 +163,7 @@ Breakpoint sm 640 · md 768 · lg 1024 · xl 1280
 | Autosave gagal | Banner kuning persisten + tombol coba lagi; data disimpan lokal |
 | Submit tidak lengkap | Daftar pertanyaan kurang, klik untuk melompat ke pertanyaan |
 | Benchmark tidak tersedia | Sembunyikan persentil, tampilkan "Data pembanding belum cukup" |
-| Terkunci paywall | Blur hasil detail + kartu penjelasan nilai, bukan dinding keras |
+| Undangan dicabut/kedaluwarsa | Halaman netral: "Tautan ini sudah tidak berlaku. Hubungi auditor Anda untuk tautan baru." Tanpa membocorkan apakah token pernah ada |
 
 ### B8. Aksesibilitas & konten
 - Setiap input punya `<label>`; grup radio memakai `fieldset/legend`.

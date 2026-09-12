@@ -1,5 +1,8 @@
 # TRD — Technical Requirements Document
-**Produk:** SiapAI · **Versi:** 1.0 · **Tanggal:** 2026-09-12
+**Produk:** SiapAI · **Versi:** 2.0 · **Tanggal:** 2026-09-12
+
+> **Perubahan dari v1.0:** modul pembayaran dihapus. Ditambahkan modul undangan
+> dan pembuatan QR code server-side, serta autentikasi responden berbasis token.
 
 ---
 
@@ -22,7 +25,7 @@
 | Object storage | S3-compatible (Cloudflare R2) | PDF & bukti |
 | PDF | Playwright (render halaman hasil) | Konten identik HTML (PA3) |
 | Auth | JWT access 15m + refresh rotatif 30d, Google OAuth2 | |
-| Pembayaran | Midtrans Snap | Pasar Indonesia |
+| QR code | `qrcode` (Bun/Node) untuk PNG & SVG | Dibuat server-side agar auditor bisa unduh dan cetak |
 | Email | Resend / AWS SES | OTP, laporan |
 | Observability | OpenTelemetry, Sentry, Grafana/Loki | |
 | CI/CD | GitHub Actions → Docker → Fly.io/AWS ECS | |
@@ -44,7 +47,7 @@ flowchart TB
     REC --- RPT[report]
     RPT --- BMK[benchmark]
     ADM[admin cms] --- ASM
-    PAY[billing]
+    INV[invitation & qr]
   end
   subgraph Async[Workers BullMQ]
     PDFW[pdf worker]
@@ -54,14 +57,12 @@ flowchart TB
   DB[(PostgreSQL)]
   RDS[(Redis)]
   S3[(Object Storage)]
-  MID[Midtrans]
 
   W --> CDN --> API
   API --> DB
   API --> RDS
   API --> Async
   PDFW --> S3
-  PAY <--> MID
   BMKW --> DB
 ```
 
@@ -83,14 +84,14 @@ erDiagram
 ```
 
 Tabel inti (kolom kunci):
-- `organizations(id, name, industry, employee_band, revenue_band, country, province, created_at)`
+- `companies(id, name, industry, employee_band, revenue_band, country, province, created_at)`
 - `users(id, email, name, email_verified_at, created_at)`
-- `memberships(user_id, organization_id, role, status)` — PK gabungan
+- `memberships(user_id, company_id, role, status)` — PK gabungan
 - `questionnaire_versions(id, version, status[DRAFT|PUBLISHED|ARCHIVED], published_at)`
 - `dimensions(code, name, weight, questionnaire_version_id)`
 - `questions(id, code, dimension_code, type, prompt, help_text, weight, required, order, visibility_rule JSONB, questionnaire_version_id)`
 - `question_options(id, question_id, code, label, score, order)`
-- `assessments(id, organization_id, created_by, type[QUICK|FULL], status[IN_PROGRESS|SUBMITTED|SCORED|ARCHIVED], questionnaire_version_id, rubric_version, is_test, started_at, submitted_at, deleted_at)`
+- `assessments(id, company_id, created_by, type[QUICK|FULL], status[IN_PROGRESS|SUBMITTED|SCORED|ARCHIVED], questionnaire_version_id, rubric_version, is_test, started_at, submitted_at, deleted_at)`
 - `answers(id, assessment_id, question_code, value JSONB, evidence_url, answered_at)` — unique `(assessment_id, question_code)`
 - `score_results(id, assessment_id, total_score, level, verdict, gates JSONB, confidence, breakdown JSONB, rubric_version, computed_at)`
 - `dimension_scores(score_result_id, dimension_code, score, level, weight)`
@@ -98,10 +99,10 @@ Tabel inti (kolom kunci):
 - `recommendation_items(score_result_id, code, priority_score, rank)`
 - `benchmarks(industry, employee_band, dimension_code, p25, p50, p75, sample_size, period)`
 - `share_links(token_hash, assessment_id, expires_at, anonymize, revoked_at)`
-- `entitlements(organization_id, plan, status, valid_until)`
+- `invitations(id, company_id, assessment_id, token_hash, status, recipient_name, recipient_email, issued_at, opened_at, submitted_at, expires_at, revoked_at, reminder_count)` — unique index pada `token_hash`
 - `audit_logs(id, actor_id, org_id, action, entity, entity_id, meta JSONB, ip, created_at)`
 
-Indeks penting: `answers(assessment_id)`, `assessments(organization_id, status)`, `score_results(assessment_id)`, `benchmarks(industry, employee_band)`.
+Indeks penting: `answers(assessment_id)`, `assessments(company_id, status)`, `score_results(assessment_id)`, `benchmarks(industry, employee_band)`.
 
 ## 5. Mesin Skoring
 - Paket terpisah `packages/scoring` tanpa dependensi I/O → mudah diuji.
@@ -125,11 +126,13 @@ Operator didukung: `eq, neq, in, nin, gt, gte, lt, lte, exists`. Evaluator murni
 |---|---|
 | Transport | TLS 1.3 wajib, HSTS |
 | At rest | Enkripsi disk DB, bucket privat, pre-signed URL |
-| AuthZ | Elysia `macro` guard per-route + filter `organization_id` wajib di repository layer (tenant isolation ganda) |
+| AuthZ | Elysia `macro` guard per-route + filter `company_id` wajib di repository layer (tenant isolation ganda) |
 | Rate limit | Plugin `elysia-rate-limit`: 100 req/menit/IP umum; 5 req/menit untuk OTP |
 | Input | Validasi TypeBox (`t.Object`) di tiap handler, sanitasi teks, ukuran upload maks 10 MB, whitelist MIME |
 | Secrets | Secret manager, tidak pernah di repo |
 | Audit | Semua aksi mutasi tercatat di `audit_logs` |
+| Token undangan | Acak ≥ 32 byte dari CSPRNG, disimpan sebagai hash (argon2id/SHA-256 + pepper), dibandingkan constant-time, punya masa berlaku dan dapat dicabut |
+| Halaman form publik | Header `X-Robots-Tag: noindex, nofollow`; rate limit 30 req/menit per token; pesan 404 netral agar keberadaan token tidak bocor |
 | PDP (UU 27/2022) | Consent tercatat, hak akses/hapus data, retensi draft 30 hari, data residency Indonesia/Singapura |
 | Dependency | `bun audit` + Dependabot di CI, gagal build pada high severity |
 
@@ -168,7 +171,7 @@ Backup Postgres PITR harian + WAL; uji restore bulanan. RPO 15 menit, RTO 4 jam.
 ```
 audit/
   apps/web        Next.js
-  apps/api        Elysia (Bun) — modul: auth, organization, assessment, report, billing, admin
+  apps/api        Elysia (Bun) — modul: auth, company, invitation, respondent, report, admin
   packages/scoring    mesin skoring murni (dapat diimpor web & api)
   packages/contracts  tipe hasil generate dari OpenAPI + Eden Treaty client
   contracts/openapi.yaml

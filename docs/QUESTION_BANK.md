@@ -1,5 +1,5 @@
 # QUESTION_BANK — Bank Pertanyaan v1.0
-Skor opsi 0–100. `w` = bobot pertanyaan dalam dimensinya. `Q` = termasuk Quick Check.
+Skor opsi 0–100. `w` = bobot pertanyaan dalam dimensinya. `Q` = pertanyaan inti penentu kesiapan, ditampilkan lebih awal dalam form dan dipakai untuk ringkasan cepat di dashboard auditor.
 Tipe: `SC` single_choice · `MC` multi_choice · `S5` scale_1_5 · `B` boolean · `N` number.
 
 ---
@@ -58,7 +58,7 @@ Tipe: `SC` single_choice · `MC` multi_choice · `S5` scale_1_5 · `B` boolean �
 - 75 Ada aturan validasi di titik input
 - 100 Ada pemantauan kualitas data otomatis dengan metrik
 
-**DAT-04 (SC, w=3)** Seberapa mudah tim mengakses data untuk analisis?
+**DAT-04 (SC, w=3, Q)** Seberapa mudah tim mengakses data untuk analisis?
 - 0 Harus minta manual ke IT, berhari-hari
 - 25 Ekspor berkala mingguan/bulanan
 - 50 Dashboard self-service terbatas
@@ -81,7 +81,7 @@ Tipe: `SC` single_choice · `MC` multi_choice · `S5` scale_1_5 · `B` boolean �
 ## TEC — Teknologi & Infrastruktur (15%)
 **TEC-01 (SC, w=3, Q)** Bagaimana infrastruktur sistem Anda?
 - 0 Tidak ada sistem terkomputerisasi · 25 On-premise saja, tanpa rencana · 50 On-premise dengan rencana migrasi · 75 Hybrid cloud · 100 Cloud-native
-**TEC-02 (SC, w=3)** Apakah sistem inti Anda punya API untuk integrasi?
+**TEC-02 (SC, w=3, Q)** Apakah sistem inti Anda punya API untuk integrasi?
 - 0 Tidak / tidak tahu · 25 Hanya ekspor file · 50 API terbatas dari vendor · 75 API terdokumentasi untuk sebagian besar sistem · 100 Semua sistem terintegrasi via API/event
 **TEC-03 (SC, w=2)** Bagaimana sistem antar-divisi saling terhubung?
 - 0 Tidak terhubung, entri ulang manual · 50 Integrasi titik-ke-titik ad-hoc · 100 Integrasi terkelola (iPaaS/event bus)
@@ -98,7 +98,7 @@ Tipe: `SC` single_choice · `MC` multi_choice · `S5` scale_1_5 · `B` boolean �
 ## PPL — SDM & Keterampilan (15%)
 **PPL-01 (SC, w=3, Q)** Apakah ada orang di perusahaan yang mampu mengolah dan menganalisis data?
 - 0 Tidak ada · 25 Ada yang mahir spreadsheet · 50 Ada analis data khusus · 75 Ada tim data/BI · 100 Ada data scientist/ML engineer
-**PPL-02 (SC, w=3)** Tingkat literasi data manajemen dalam mengambil keputusan?
+**PPL-02 (SC, w=3, Q)** Tingkat literasi data manajemen dalam mengambil keputusan?
 - 0 Keputusan berbasis intuisi · 25 Lihat laporan sesekali · 50 Rutin memakai laporan · 75 Memakai dashboard & metrik · 100 Uji hipotesis/eksperimen sebelum memutuskan
 **PPL-03 (SC, w=2)** Apakah ada program pelatihan teknologi/data untuk karyawan?
 - 0 Tidak ada · 50 Ad-hoc sesuai permintaan · 100 Program terjadwal dengan anggaran
@@ -142,9 +142,9 @@ Tipe: `SC` single_choice · `MC` multi_choice · `S5` scale_1_5 · `B` boolean �
 ---
 
 ## FIN — Finansial & Nilai (10%)
-**FIN-01 (SC, w=3, Q)** Apakah Anda dapat mengukur biaya proses yang ingin diperbaiki?
+**FIN-01 (SC, w=3)** Apakah Anda dapat mengukur biaya proses yang ingin diperbaiki?
 - 0 Tidak tahu · 50 Perkiraan kasar · 100 Angka akurat per proses
-**FIN-02 (SC, w=3)** Kesediaan investasi awal untuk pilot AI dalam 12 bulan?
+**FIN-02 (SC, w=3, Q)** Kesediaan investasi awal untuk pilot AI dalam 12 bulan?
 - 0 Rp 0 · 25 < Rp 50 jt · 50 Rp 50–150 jt · 75 Rp 150–500 jt · 100 > Rp 500 jt
 **FIN-03 (SC, w=2)** Ekspektasi waktu balik modal?
 - 0 < 3 bulan (tidak realistis) · 50 3–6 bulan · 100 6–18 bulan (realistis) · 75 > 18 bulan
@@ -153,9 +153,12 @@ Tipe: `SC` single_choice · `MC` multi_choice · `S5` scale_1_5 · `B` boolean �
 
 ---
 
-## Quick Check (15 pertanyaan, tier gratis)
-`ORG-02, ORG-03, STR-01, STR-02, DAT-01, DAT-02, DAT-03, DAT-04, TEC-01, TEC-02, PPL-01, PPL-02, PRC-01, GOV-01, FIN-02`
-Skoring Quick Check memakai bobot dimensi yang sama, dinormalisasi terhadap pertanyaan yang tersedia, dan hasilnya ditandai `confidence: LOW`.
+## Pertanyaan Inti Penentu Kesiapan
+Ditandai `Q` pada daftar di atas. Ke-13 pertanyaan ini adalah penentu terkuat kesiapan AI dan ditempatkan lebih awal dalam urutan form, sehingga bila responden berhenti di tengah, auditor tetap memperoleh gambaran kasar.
+
+`STR-01, STR-02, DAT-01, DAT-02, DAT-03, DAT-04, TEC-01, TEC-02, PPL-01, PPL-02, PRC-01, GOV-01, FIN-02`
+
+Ditambah profil `ORG-02` dan `ORG-03`, total 15 pertanyaan pembuka. Seluruh responden tetap mengisi form penuh; tidak ada versi ringkas terpisah.
 
 ---
 
