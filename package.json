@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit",
     "validate:docs": "python3 tools/validate_docs.py",
     "demo": "bun packages/scoring/demo.ts",
-    "verify": "bun run typecheck && bun run validate:docs && bun run trace && bun test packages apps",
+    "verify": "bun run typecheck && bun run validate:docs && bun run trace && bun test packages apps && bun run verify:readme",
     "test:api": "bun test apps/api",
     "dev": "bun tools/dev-server.ts",
     "check:visual": "bun tools/visual-check.ts",
@@ -22,7 +22,8 @@
     "db:migrate": "drizzle-kit migrate",
     "db:setup": "createdb siapai_dev 2>/dev/null; DATABASE_URL=postgres://localhost:5432/siapai_dev drizzle-kit migrate",
     "test:pg": "TEST_DATABASE_URL=postgres://localhost:5432/siapai_test bun test apps/api",
-    "verify:pg": "bun run verify && bun run test:pg"
+    "verify:pg": "bun run verify && bun run test:pg",
+    "verify:readme": "python3 tools/verify_readme.py"
   },
   "devDependencies": {
     "@types/pngjs": "^6.0.5",

@@ -36,10 +36,10 @@ itu jujur, sehingga status tidak pernah dilaporkan lebih baik dari kenyataan.
 
 | Paket | Isi | Status |
 |---|---|---|
-| `packages/scoring` | Mesin skoring: 7 dimensi, hard gate, rekomendasi, DSL visibilitas, kuesioner v1 | Berjalan, 90 uji |
+| `packages/scoring` | Mesin skoring: 7 dimensi, hard gate, rekomendasi, DSL visibilitas, kuesioner v1 | Berjalan, 92 uji |
 | `apps/api` | Perusahaan klien, undangan + QR, jalur responden bertoken | Berjalan, 43 uji |
 | `apps/web` | Form responden mobile-first + dashboard auditor (undangan, QR, status) | Berjalan, 49 uji |
-| `apps/api/src/db` | Skema Drizzle + repo PostgreSQL, migrasi siap pakai | Berjalan, 35 uji |
+| `apps/api/src/db` | Skema Drizzle + repo PostgreSQL, migrasi siap pakai | Berjalan, 16 uji kontrak |
 | `apps/api` auth | Login email+OTP, JWT 15 menit, refresh rotatif, undangan tim | Berjalan, 32 uji |
 | `apps/api` laporan | Ekspor PDF & tautan bagikan read-only | Berjalan, 19 uji |
 
@@ -165,15 +165,19 @@ bun run test     # semua uji termasuk spike Elysia
 |---|---|---|
 | Konsistensi dokumen & kontrak | `python3 tools/validate_docs.py` | 96/96 lulus |
 | OpenAPI 3.1 sah | `openapi-spec-validator contracts/openapi.yaml` | VALID |
-| Mesin skoring & rekomendasi | `bun test packages/scoring` | 90/90 lulus |
-| Alur undangan, QR, dan pengisian | `bun test apps/api` | 43/43 lulus |
+| Mesin skoring & rekomendasi | `bun test packages/scoring` | 92/92 lulus |
+| Alur undangan, QR, dan pengisian | `bun test apps/api` | 110/110 lulus |
 | Form web & dashboard auditor | `bun test apps/web` | 49/49 lulus |
 | Tampilan di iPhone sungguhan | `bun run check:visual` | 17/17 lulus |
 | Autentikasi & skenario serangan | `bun test apps/api/test/auth.test.ts` | 32/32 lulus |
 | Tautan bagikan & ekspor PDF | `bun test apps/api/test/report.test.ts` | 19/19 lulus |
-| Kontrak penyimpanan (memori & Postgres) | `bun run test:pg` | 110/110 lulus |
+| Kontrak penyimpanan (memori & Postgres) | `bun run test:pg` | 129/129 lulus |
 | Type safety (strict) | `bunx tsc --noEmit` | bersih |
 | Keterlacakan FRD → kode → uji | `python3 tools/traceability.py` | 24 siap, 6 ditunda, 0 bermasalah |
+| Akurasi klaim README itu sendiri | `python3 tools/verify_readme.py` | 10/10 terverifikasi |
+
+Angka di tabel ini tidak ditulis tangan begitu saja: `tools/verify_readme.py`
+menjalankan perintahnya dan menolak bila README mengklaim lebih dari kenyataan.
 
 Suite kontrak penyimpanan dijalankan terhadap implementasi memori **dan**
 PostgreSQL nyata, sehingga keduanya dijamin berperilaku identik. Uji persistensi
