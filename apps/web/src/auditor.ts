@@ -316,6 +316,10 @@ ${macet.length ? `<div class="card">
   Skor kesiapan tetap dihitung dari rubrik. AI hanya menilai kualitas jawaban:
   kontradiksi, klaim tanpa bukti, dan hal yang perlu dikonfirmasi auditor.</p>
 
+${query.gagal ? `<div class="banner banner-error">${esc(query.gagal)}</div>` : ''}
+${query.selesai ? `<div class="banner banner-ok">${esc(query.selesai)} assessment selesai ditinjau.${
+  query.sebagian ? ` ${esc(query.sebagian)} gagal dan dapat dicoba lagi.` : ''}</div>` : ''}
+
 <div class="stats">
   <div class="stat"><b>${selesai.length}</b><span>Laporan selesai</span></div>
   <div class="stat"><b>${sudah.length}</b><span>Sudah ditinjau</span></div>
@@ -361,21 +365,33 @@ ${selesai.length === 0
       ${paginasi('/app/tinjauan', query as Record<string, string>, halaman, urut.length)}
     </div>`}`,
       }), 200, cookiesBaru)
-    }, { query: t.Object({ page: t.Optional(t.String()) }) })
+    }, {
+      query: t.Object({
+        page: t.Optional(t.String()),
+        gagal: t.Optional(t.String()),
+        selesai: t.Optional(t.String()),
+        sebagian: t.Optional(t.String()),
+      }),
+    })
 
     .post('/app/tinjauan/jalankan', async ({ sesi }) => {
       const s = await sesi()
       if (!s) return redirect('/masuk')
-      await s.api('/ai-review/batch', {
+      const res = await s.api('/ai-review/batch', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ limit: PER_PAGE }),
       })
-      return redirect('/app/tinjauan')
+      // Gagal diam-diam adalah yang terburuk: auditor menekan tombol, halaman
+      // termuat ulang, dan tidak ada yang berubah tanpa penjelasan.
+      if (!res.ok) return redirect(`/app/tinjauan?gagal=${encodeURIComponent(await pesan(res))}`)
+      const d = await res.json() as { reviewed: number; items: { status: string }[] }
+      const gagal = d.items.filter((x) => x.status !== 'reviewed').length
+      return redirect(`/app/tinjauan?selesai=${d.reviewed}${gagal ? `&sebagian=${gagal}` : ''}`)
     })
 
     // ── Detail undangan dengan QR siap pindai (FR-23, FR-24)
-    .get('/app/undangan/:id', async ({ sesi, params }) => {
+    .get('/app/undangan/:id', async ({ sesi, params, query }) => {
       const s = await sesi()
       if (!s) return redirect('/masuk')
       const { api, cookiesBaru } = s
@@ -406,6 +422,7 @@ ${selesai.length === 0
         body: `
 <p><a href="/app/undangan">← Kembali ke daftar</a></p>
 <div class="page-head"><h1>${esc(inv.company_name)}</h1></div>
+${query.gagal ? `<div class="banner banner-error">${esc(query.gagal)}</div>` : ''}
 <p><span class="pill" style="color:${STATUS_COLOR[inv.status]}">
   ${esc(STATUS_LABEL[inv.status] ?? inv.status)}</span>
   <span class="muted"> · ${inv.progress.answered} dari ${inv.progress.total_visible} terjawab</span></p>
@@ -499,7 +516,10 @@ ${inv.status === 'SCORED'
      </div>`
   : ''}`,
       }), 200, cookiesBaru)
-    }, { params: t.Object({ id: t.String() }) })
+    }, {
+      params: t.Object({ id: t.String() }),
+      query: t.Object({ gagal: t.Optional(t.String()) }),
+    })
 
     // Proksi gambar QR agar dashboard tidak perlu menyematkan kredensial di HTML.
     .get('/app/undangan/:id/qr.png', async ({ sesi, params, set }) => {
@@ -556,7 +576,12 @@ ${inv.status === 'SCORED'
       if (!s) return redirect('/masuk')
       const inv = await (await s.api(`/invitations/${params.id}`)).json() as Invitation
       // refresh=1: tombol ini selalu berarti "tinjau sekarang", bukan baca cache.
-      await s.api(`/assessments/${inv.assessment_id}/ai-review?refresh=1`, { method: 'POST' })
+      const res = await s.api(`/assessments/${inv.assessment_id}/ai-review?refresh=1`,
+        { method: 'POST' })
+      if (!res.ok) {
+        return redirect(`/app/undangan/${params.id}?gagal=${
+          encodeURIComponent(await pesan(res))}`)
+      }
       return redirect(`/app/undangan/${params.id}`)
     }, { params: t.Object({ id: t.String() }) })
 
@@ -614,6 +639,16 @@ ${inv.status === 'SCORED'
       })
       return redirect('/app/perusahaan')
     })
+}
+
+/**
+ * Pesan yang layak dibaca manusia dari respons API yang gagal.
+ * Amplop error punya bentuk seragam, tetapi 503 dari perender atau model bisa
+ * datang tanpa badan JSON sama sekali.
+ */
+async function pesan(res: Response): Promise<string> {
+  const body = await res.json().catch(() => null) as { error?: { message?: string } } | null
+  return body?.error?.message ?? `Permintaan gagal (${res.status})`
 }
 
 // ── Pengambilan data

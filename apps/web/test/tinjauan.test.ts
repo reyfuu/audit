@@ -231,6 +231,39 @@ describe('FR-31 halaman tinjauan AI', () => {
     const page = await (await t.get(`/app/undangan/${p.id}`)).text()
     expect(page).toContain('Belum ditinjau')
   })
+
+  it('menjelaskan saat tinjauan AI belum dikonfigurasi, bukan gagal diam-diam', async () => {
+    const t = await setup()
+    await perusahaan(t, 'PT Tinjauan Belum Aktif', true)
+    const res = await t.post('/app/tinjauan/jalankan')
+    expect(res.status).toBe(303)
+    // Alasannya dibawa ke halaman, sehingga auditor tahu mengapa tidak terjadi apa-apa.
+    const tujuan = res.headers.get('location')!
+    expect(decodeURIComponent(tujuan)).toContain('belum dikonfigurasi')
+    const page = await (await t.get(tujuan)).text()
+    expect(page).toContain('belum dikonfigurasi')
+    expect(page).toContain('banner-error')
+  })
+
+  it('melaporkan berapa assessment yang selesai ditinjau', async () => {
+    const t = await setup(stubChat().client)
+    await perusahaan(t, 'PT Lapor Satu', true)
+    await perusahaan(t, 'PT Lapor Dua', true)
+    const res = await t.post('/app/tinjauan/jalankan')
+    const tujuan = res.headers.get('location')!
+    expect(tujuan).toContain('selesai=2')
+    expect(await (await t.get(tujuan)).text()).toContain('2 assessment selesai ditinjau')
+  })
+
+  it('tombol tinjau satuan juga melaporkan kegagalan, bukan diam', async () => {
+    const t = await setup()
+    const p = await perusahaan(t, 'PT Satuan Gagal', true)
+    const res = await t.post(`/app/undangan/${p.id}/tinjau`)
+    const tujuan = res.headers.get('location')!
+    expect(decodeURIComponent(tujuan)).toContain('belum dikonfigurasi')
+    const page = await (await t.get(tujuan)).text()
+    expect(page).toContain('banner-error')
+  })
 })
 
 describe('FR-29 dashboard pada banyak perusahaan', () => {
