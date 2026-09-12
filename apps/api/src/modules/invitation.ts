@@ -154,11 +154,21 @@ export function invitationModule({ repo, baseUrl, now = () => new Date() }: Invi
       ({ params, user, status }) => {
         const inv = ownedInvitation(repo, params.id, user!.id)
         if (!inv) return status(404, err('NOT_FOUND', 'Undangan tidak ditemukan'))
-        return toDto(inv)
+        // Auditor pemilik boleh melihat kembali tautannya: ia memang berhak
+        // membagikannya, dan memaksanya menerbitkan ulang hanya untuk menyalin
+        // tautan akan membatalkan QR yang mungkin sudah dicetak.
+        const st = effectiveStatus(inv, now())
+        const bisaDibagikan = st !== 'REVOKED' && st !== 'EXPIRED'
+        return {
+          ...toDto(inv),
+          ...(bisaDibagikan
+            ? { invitation_url: invitationUrl(baseUrl, openToken(inv.token_sealed)) }
+            : {}),
+        }
       },
       {
         params: t.Object({ id: t.String() }),
-        response: { 200: S.Invitation, 401: S.ErrorEnvelope, 404: S.ErrorEnvelope },
+        response: { 200: S.InvitationDetail, 401: S.ErrorEnvelope, 404: S.ErrorEnvelope },
         detail: { tags: ['Invitations'], summary: 'Detail satu undangan' },
       },
     )

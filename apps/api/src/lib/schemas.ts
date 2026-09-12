@@ -138,6 +138,12 @@ export const Invitation = t.Object({
   reminder_count: t.Integer(),
 })
 
+/** Detail untuk auditor pemilik; menyertakan tautan agar dapat dibagikan ulang. */
+export const InvitationDetail = t.Composite([
+  Invitation,
+  t.Object({ invitation_url: t.Optional(t.String()) }),
+])
+
 export const InvitationCreated = t.Composite([
   Invitation,
   t.Object({

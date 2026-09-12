@@ -38,7 +38,7 @@ itu jujur, sehingga status tidak pernah dilaporkan lebih baik dari kenyataan.
 |---|---|---|
 | `packages/scoring` | Mesin skoring: 7 dimensi, hard gate, rekomendasi, DSL visibilitas, kuesioner v1 | Berjalan, 90 uji |
 | `apps/api` | Perusahaan klien, undangan + QR, jalur responden bertoken | Berjalan, 43 uji |
-| `apps/web` | Form mobile-first, satu pertanyaan per layar, halaman hasil | Berjalan, 31 uji |
+| `apps/web` | Form responden mobile-first + dashboard auditor (undangan, QR, status) | Berjalan, 49 uji |
 
 **Alur utama sudah utuh:** auditor menerbitkan undangan → QR/tautan → owner mengisi → skor dan rekomendasi keluar.
 
@@ -53,11 +53,45 @@ Penyimpanan masih in-memory; Drizzle/Postgres (ADR-008) belum dipasang.
 python3 tools/traceability.py   # peta FRD -> implementasi -> uji
 ```
 
+## Mencoba di Lokal
+
 ```bash
-bun run dev           # jalankan API + form, cetak tautan undangan & QR siap dicoba
-bun run verify        # typecheck + validator dokumen + semua uji
+bun install
+bun run demo:lokal
+```
+
+Perintah itu menyalakan API, form responden, dan dashboard auditor sekaligus,
+lalu mencetak semua tautan yang dibutuhkan.
+
+**Akun demo** — sesi auditor `Dimas Auditor <auditor@demo.id>` sudah aktif
+otomatis di dashboard, karena autentikasi nyata (FR-01..FR-04) belum dipasang.
+
+| Buka | Isinya |
+|---|---|
+| `http://localhost:3000/app` | Dashboard auditor: daftar undangan, status, progres |
+| Tautan "COBA ISI FORM SENDIRI" | Form kosong siap diisi dari awal |
+| Tautan "LAPORAN" | Contoh laporan yang sudah jadi |
+
+Tiga perusahaan contoh disiapkan pada kondisi berbeda: belum dibuka, sedang
+diisi separuh, dan sudah selesai beserta laporannya.
+
+### Mencoba dari HP
+1. Buka halaman detail undangan di laptop, QR-nya langsung tampil.
+2. Pindai dengan kamera bawaan HP.
+3. Agar HP dapat menjangkau laptop, keduanya harus satu Wi-Fi dan servernya
+   dijalankan dengan alamat yang dapat diakses:
+   ```bash
+   PUBLIC_BASE_URL=http://192.168.x.x:3000 bun run demo:lokal
+   ```
+
+> Data demo disimpan di memori. Menghentikan proses akan menghapus semuanya.
+
+## Perintah Lain
+```bash
+bun run verify        # typecheck + validator dokumen + keterlacakan + semua uji
 bun run check:visual  # verifikasi di viewport iPhone sungguhan (Playwright)
-bun run demo          # skor 3 profil bisnis contoh
+bun run demo          # cetak skor 3 profil bisnis contoh ke terminal
+bun run dev           # API + form saja, tanpa dashboard
 ```
 
 ## Model Kesiapan
@@ -99,7 +133,7 @@ bun run test     # semua uji termasuk spike Elysia
 | OpenAPI 3.1 sah | `openapi-spec-validator contracts/openapi.yaml` | VALID |
 | Mesin skoring & rekomendasi | `bun test packages/scoring` | 90/90 lulus |
 | Alur undangan, QR, dan pengisian | `bun test apps/api` | 43/43 lulus |
-| Form web tanpa JavaScript | `bun test apps/web` | 31/31 lulus |
+| Form web & dashboard auditor | `bun test apps/web` | 49/49 lulus |
 | Tampilan di iPhone sungguhan | `bun run check:visual` | 17/17 lulus |
 | Type safety (strict) | `bunx tsc --noEmit` | bersih |
 | Keterlacakan FRD → kode → uji | `python3 tools/traceability.py` | 19 siap, 11 ditunda, 0 bermasalah |
