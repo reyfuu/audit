@@ -10,6 +10,7 @@ import type { RawApi } from './auth-guard'
 import { secureDari, sessionApi } from './auth-guard'
 import { cookieHapus, cookieSesi, sesiDari } from './session'
 import { ICONS } from './icons'
+import { PASSWORD_SCRIPT, passwordField } from './password-field'
 import { esc, html, plainPage, redirect } from './shell'
 
 export interface LoginDeps {
@@ -31,9 +32,10 @@ export function loginPage(d: { error?: string; email?: string } = {}): string {
     <label class="lbl" for="email">Email</label>
     <input class="field" id="email" name="email" type="email" required autocomplete="username"
            inputmode="email" value="${esc(d.email ?? '')}" placeholder="nama@perusahaan.id">
-    <label class="lbl" for="password">Kata sandi</label>
-    <input class="field" id="password" name="password" type="password" required
-           autocomplete="current-password" placeholder="Kata sandi">
+    ${passwordField({
+      id: 'password', name: 'password', label: 'Kata sandi',
+      autocomplete: 'current-password', required: true, placeholder: 'Kata sandi',
+    })}
     <button class="btn btn-primary btn-icon" type="submit" style="width:100%">
       ${ICONS.keluar}Masuk</button>
   </form>
@@ -42,7 +44,7 @@ export function loginPage(d: { error?: string; email?: string } = {}): string {
     <a href="/masuk/kode">Masuk dengan kode lewat email</a>.
   </p>
   <p class="muted">Akun auditor hanya dibuat lewat undangan admin tim Anda.</p>
-</div>`)
+</div>`, PASSWORD_SCRIPT)
 }
 
 export function loginModule({ raw, publicBase }: LoginDeps) {

@@ -46,6 +46,8 @@ export function shell(d: {
   active: string
   email?: string
   body: string
+  /** Skrip peningkatan progresif; halaman tetap berfungsi tanpanya. */
+  script?: string
 }): string {
   const nav = NAV.map((n) => `<a class="nav" href="${n.href}"${
     n.href === d.active ? ' aria-current="page"' : ''
@@ -66,13 +68,16 @@ export function shell(d: {
   </nav>
   <main class="main"><div class="inner">${d.body}</div></main>
 </div>
+${d.script ? `<script>${d.script}</script>` : ''}
 </body></html>`
 }
 
 /** Halaman tanpa sidebar, untuk masuk dan pesan yang berdiri sendiri. */
-export function plainPage(title: string, body: string): string {
+export function plainPage(title: string, body: string, script?: string): string {
   return `<!doctype html><html lang="id"><head>${head(title)}</head><body>
-<div class="login-wrap">${body}</div></body></html>`
+<div class="login-wrap">${body}</div>
+${script ? `<script>${script}</script>` : ''}
+</body></html>`
 }
 
 export const html = (body: string, status = 200, cookies: string[] = []) => {

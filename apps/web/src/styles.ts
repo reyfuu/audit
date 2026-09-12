@@ -279,6 +279,25 @@ label.lbl { display:block; font-size:13px; color:var(--muted); margin-bottom:4px
 }
 
 
+/*
+ * Kolom kata sandi dengan tombol lihat/sembunyi.
+ * Tombol berada di dalam kotak input, sehingga tidak menambah tinggi baris
+ * maupun menggeser tata letak formulir.
+ */
+.password-wrap { position:relative; display:block; margin-bottom:14px; }
+.password-wrap input { width:100%; }
+.password-wrap input.has-toggle { padding-right:48px; }
+.password-toggle {
+  position:absolute; top:0; right:0; height:100%; width:44px;
+  display:grid; place-items:center;
+  background:none; border:0; cursor:pointer; color:var(--muted); padding:0;
+}
+.password-toggle:hover { color:var(--text); }
+.password-toggle:focus-visible { outline:2px solid var(--brand-600); outline-offset:-2px;
+  border-radius:var(--radius); }
+/* Peramban Chromium punya ikon mata bawaan; dua ikon berdampingan membingungkan. */
+.password-wrap input::-ms-reveal, .password-wrap input::-ms-clear { display:none; }
+
 .login-brand { display:flex; align-items:center; gap:10px; margin-bottom:14px;
   font-weight:700; font-size:18px; color:var(--brand-900); }
 .login-wrap { max-width:420px; margin:0 auto; padding:48px 20px; }

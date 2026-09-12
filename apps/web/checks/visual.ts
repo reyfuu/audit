@@ -218,6 +218,61 @@ check('Login membawa auditor ke dashboard',
   p4.url().includes('/app'), `berakhir di ${new URL(p4.url()).pathname}`)
 await p4.screenshot({ path: '/tmp/siapai-10-masuk.png', fullPage: true })
 
+/*
+ * Tombol lihat kata sandi.
+ *
+ * Yang diperiksa adalah perilaku yang benar-benar dialami pengguna: tipe input
+ * berubah, isinya terbaca, dan dapat disembunyikan kembali. Uji HTML tidak
+ * dapat membuktikan itu karena tombolnya dipasang oleh JavaScript.
+ */
+{
+  // Konteks bersih: konteks `desktop` sudah punya sesi, sehingga akar akan
+  // mengalihkannya ke dashboard dan halaman masuk tidak pernah tampil.
+  const tamu = await browser.newContext({ viewport: { width: 1280, height: 900 } })
+  const p = await tamu.newPage()
+  await p.goto(`${WEB_BASE}/`, { waitUntil: 'networkidle' })
+  await p.fill('#password', 'rahasia-saya')
+
+  const awal = await p.locator('#password').getAttribute('type')
+  check('Kata sandi tersembunyi saat halaman dibuka', awal === 'password',
+    `type=${awal}`)
+
+  const toggle = p.locator('.password-toggle').first()
+  check('Tombol lihat kata sandi terpasang oleh skrip',
+    await toggle.count() > 0, 'tombol ada')
+
+  const kotak = await toggle.boundingBox()
+  check('Target sentuh tombol lihat >= 44px',
+    Boolean(kotak && kotak.width >= 40 && kotak.height >= 40),
+    `${Math.round(kotak?.width ?? 0)}x${Math.round(kotak?.height ?? 0)}px`)
+
+  await toggle.click()
+  check('Menekan tombol menampilkan kata sandi',
+    await p.locator('#password').getAttribute('type') === 'text'
+      && await p.locator('#password').inputValue() === 'rahasia-saya',
+    'teks terbaca')
+  check('Status diumumkan ke pembaca layar',
+    await toggle.getAttribute('aria-pressed') === 'true',
+    `aria-pressed=${await toggle.getAttribute('aria-pressed')}`)
+  await p.screenshot({ path: '/tmp/siapai-16-password.png' })
+
+  await toggle.click()
+  check('Menekan lagi menyembunyikan kembali',
+    await p.locator('#password').getAttribute('type') === 'password'
+      && await toggle.getAttribute('aria-pressed') === 'false',
+    'kembali tersembunyi')
+
+  // Kata sandi tetap terkirim benar setelah sempat ditampilkan.
+  await p.fill('#email', auditor.email)
+  await p.fill('#password', SANDI)
+  await toggle.click()
+  await p.getByRole('button', { name: 'Masuk' }).click()
+  await p.waitForLoadState('networkidle')
+  check('Login tetap berhasil setelah kata sandi ditampilkan',
+    new URL(p.url()).pathname === '/app', `berakhir di ${new URL(p.url()).pathname}`)
+  await tamu.close()
+}
+
 const sidebarItems = await p4.locator('.side a.nav').count()
 check('Sidebar navigasi tampil di dashboard', sidebarItems >= 5,
   `${sidebarItems} item navigasi`)

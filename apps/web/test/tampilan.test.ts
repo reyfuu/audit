@@ -170,6 +170,66 @@ describe('pesan penting disertai ikon', () => {
   })
 })
 
+describe('tombol lihat kata sandi', () => {
+  it('halaman masuk menyediakan kolom kata sandi yang dapat ditampilkan', async () => {
+    const t = await setup()
+    const page = await (await t.app.handle(new Request(`${BASE}/`))).text()
+    expect(page).toContain('class="password-wrap"')
+    expect(page).toContain('password-toggle')
+    expect(page).toContain('Tampilkan kata sandi')
+  })
+
+  it('halaman akun memasang tombol pada kedua kolom kata sandi', async () => {
+    const t = await setup()
+    const page = await (await t.get('/app/akun')).text()
+    expect((page.match(/class="password-wrap"/g) ?? [])).toHaveLength(2)
+    expect(page).toContain('id="cur"')
+    expect(page).toContain('id="new"')
+  })
+
+  it('kolom tetap bertipe password pada HTML awal, bukan teks terbuka', async () => {
+    const t = await setup()
+    const page = await (await t.app.handle(new Request(`${BASE}/`))).text()
+    // Tanpa JavaScript, kata sandi tidak boleh terlihat sama sekali.
+    expect(page).toMatch(/id="password"[^>]*type="password"/)
+    expect(page).not.toMatch(/id="password"[^>]*type="text"/)
+  })
+
+  it('tombol ditambahkan lewat skrip, sehingga tanpa JS tidak ada tombol mati', async () => {
+    const t = await setup()
+    const page = await (await t.app.handle(new Request(`${BASE}/`))).text()
+    const badan = page.slice(0, page.indexOf('<script'))
+    // Di markup awal belum ada elemen tombolnya; hanya skrip yang membuatnya.
+    expect(badan).not.toContain('<button type="button" class="password-toggle"')
+    expect(page).toContain('createElement')
+  })
+
+  it('status tombol diumumkan ke pembaca layar', async () => {
+    const t = await setup()
+    const page = await (await t.app.handle(new Request(`${BASE}/`))).text()
+    expect(page).toContain('aria-pressed')
+    expect(page).toContain('Sembunyikan kata sandi')
+  })
+
+  it('kolom kode OTP tidak ikut diberi tombol, karena bukan kata sandi', async () => {
+    const t = await setup()
+    const page = await (await t.app.handle(new Request(`${BASE}/masuk/kode`))).text()
+    // Hanya badan halaman yang diperiksa; CSS global memang memuat gayanya.
+    const badan = page.slice(page.indexOf('</style>'))
+    expect(badan).not.toContain('password-wrap')
+
+    // Layar kedua, tempat kode 6 digit diketik, juga tidak memakai tombol itu.
+    const layarKode = await (await t.app.handle(new Request(`${BASE}/masuk/kode`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ email: 'd@x.id' }).toString(),
+    }))).text()
+    const badanKode = layarKode.slice(layarKode.indexOf('</style>'))
+    expect(badanKode).toContain('one-time-code')
+    expect(badanKode).not.toContain('password-wrap')
+  })
+})
+
 describe('lencana merek', () => {
   it('sidebar memiliki logo yang menjadi tautan ke ringkasan', async () => {
     const t = await setup()

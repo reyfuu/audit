@@ -13,6 +13,7 @@ import { Elysia, t } from 'elysia'
 import { sessionPlugin, secureDari, type RawApi } from './auth-guard'
 import { cookieSesi } from './session'
 import { ICONS } from './icons'
+import { PASSWORD_SCRIPT, passwordField } from './password-field'
 import { esc, html, plainPage, redirect, shell } from './shell'
 
 export interface AkunDeps {
@@ -122,6 +123,7 @@ export function akunModule({ raw, publicBase }: AkunDeps) {
 
       return html(shell({
         title: 'Akun — SiapAI', active: '/app/akun', email: me.email,
+        script: PASSWORD_SCRIPT,
         body: `
 <div class="page-head"><h1>Akun</h1></div>
 
@@ -153,15 +155,17 @@ ${query.gagal
 
 <div class="card">
   <h2>Kata sandi</h2>
-  <p class="muted">Minimal 10 karakter. Kosongkan kata sandi saat ini bila Anda
-     belum pernah menetapkannya.</p>
   <form method="post" action="/app/akun/sandi" style="max-width:420px">
-    <label class="lbl" for="cur">Kata sandi saat ini</label>
-    <input class="field" id="cur" name="current_password" type="password"
-           autocomplete="current-password" style="width:100%;margin-bottom:12px">
-    <label class="lbl" for="new">Kata sandi baru</label>
-    <input class="field" id="new" name="new_password" type="password" required
-           autocomplete="new-password" minlength="10" style="width:100%;margin-bottom:12px">
+    ${passwordField({
+      id: 'cur', name: 'current_password', label: 'Kata sandi saat ini',
+      autocomplete: 'current-password',
+      hint: 'Kosongkan bila Anda belum pernah menetapkan kata sandi.',
+    })}
+    ${passwordField({
+      id: 'new', name: 'new_password', label: 'Kata sandi baru',
+      autocomplete: 'new-password', required: true, minlength: 10,
+      hint: 'Minimal 10 karakter.',
+    })}
     <button class="btn btn-primary btn-sm btn-icon" type="submit">
       ${ICONS.ok}Simpan kata sandi</button>
   </form>
