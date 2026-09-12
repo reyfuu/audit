@@ -21,6 +21,14 @@ import { invalidPage, questionPage, resultPage, reviewPage, submittedPage, welco
 export interface WebDeps {
   /** Pemanggil API; diinjeksi agar uji dapat memakai app API langsung. */
   api: (path: string, init?: RequestInit) => Promise<Response>
+  /**
+   * Memeriksa apakah permintaan datang dari auditor yang sedang masuk.
+   *
+   * Dipakai hanya untuk memutuskan apakah tautan kembali ke dashboard layak
+   * ditampilkan di halaman laporan. Responden dan pembuka tautan bagikan tidak
+   * boleh melihatnya, karena dashboard memang bukan tempat mereka.
+   */
+  adaSesiAuditor?: (cookie: string | undefined) => Promise<boolean>
 }
 
 interface SectionPayload {
@@ -69,7 +77,13 @@ const html = (body: string, status = 200, extra: Record<string, string> = {}) =>
 
 const redirect = (to: string) => new Response(null, { status: 303, headers: { location: to } })
 
-export function createWeb({ api }: WebDeps) {
+export function createWeb({ api, adaSesiAuditor }: WebDeps) {
+  /** Tautan kembali ke dashboard, atau kosong untuk pembaca tanpa sesi. */
+  async function backHref(cookie: string | undefined): Promise<{ backHref?: string }> {
+    if (!adaSesiAuditor) return {}
+    return (await adaSesiAuditor(cookie)) ? { backHref: '/app/undangan' } : {}
+  }
+
   /** Mengambil seksi berjalan; null berarti token tidak berlaku. */
   async function section(token: string, dim?: string): Promise<SectionPayload | null> {
     const res = await api(`/f/${token}/next${dim ? `?section=${dim}` : ''}`)
@@ -183,7 +197,7 @@ export function createWeb({ api }: WebDeps) {
     }, { params: t.Object({ token: t.String() }) })
 
     // ── FR-18 laporan yang dibagikan, dibuka tanpa akun
-    .get('/l/:token', async ({ params }) => {
+    .get('/l/:token', async ({ params, headers }) => {
       const res = await api(`/l/${params.token}`)
       if (!res.ok) return html(invalidPage(), 404)
       const d = await res.json() as {
@@ -196,11 +210,12 @@ export function createWeb({ api }: WebDeps) {
         company_name: d.company_name ?? 'Perusahaan (dirahasiakan)',
         result: d.result,
         recommendations: d.recommendations,
+        ...(await backHref(headers.cookie)),
       }))
     }, { params: t.Object({ token: t.String() }) })
 
     // ── Hasil
-    .get('/f/:token/hasil', async ({ params }) => {
+    .get('/f/:token/hasil', async ({ params, headers }) => {
       const res = await api(`/f/${params.token}/result`)
       if (res.status === 409) return redirect(`/f/${params.token}/periksa`)
       if (!res.ok) return html(invalidPage(), 404)
@@ -210,6 +225,7 @@ export function createWeb({ api }: WebDeps) {
         company_name: welcome.company_name,
         result: d.result,
         recommendations: d.recommendations,
+        ...(await backHref(headers.cookie)),
       }))
     }, { params: t.Object({ token: t.String() }) })
 }

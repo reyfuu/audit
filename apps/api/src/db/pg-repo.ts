@@ -166,6 +166,19 @@ export function createPgRepo(db: Db): Repo {
       await db.update(s.auditors).set({ passwordHash }).where(eq(s.auditors.id, id))
     },
 
+    async updateAuditor(id, patch) {
+      const set: Partial<typeof s.auditors.$inferInsert> = {}
+      if (patch.name !== undefined) set.name = patch.name
+      if (patch.email !== undefined) set.email = patch.email
+      if (Object.keys(set).length === 0) {
+        const [ada] = await db.select().from(s.auditors).where(eq(s.auditors.id, id))
+        return ada ? toAuditor(ada) : undefined
+      }
+      const [r] = await db.update(s.auditors).set(set)
+        .where(eq(s.auditors.id, id)).returning()
+      return r ? toAuditor(r) : undefined
+    },
+
     async createOtpChallenge(input) {
       const [r] = await db.insert(s.otpChallenges).values({
         id: input.id,
@@ -322,6 +335,35 @@ export function createPgRepo(db: Db): Repo {
         .where(eq(s.companies.ownerAuditorId, auditorId))
         .orderBy(desc(s.companies.createdAt))
       return rows.map(toCompany)
+    },
+
+    async updateCompany(id, auditorId, patch) {
+      const set: Partial<typeof s.companies.$inferInsert> = {}
+      if (patch.name !== undefined) set.name = patch.name
+      if (patch.industry !== undefined) set.industry = patch.industry
+      if (patch.employee_band !== undefined) set.employeeBand = patch.employee_band
+      if (patch.revenue_band !== undefined) set.revenueBand = patch.revenue_band
+      if (patch.country !== undefined) set.country = patch.country
+      if (patch.province !== undefined) set.province = patch.province
+      if (Object.keys(set).length === 0) {
+        const [ada] = await db.select().from(s.companies)
+          .where(and(eq(s.companies.id, id), eq(s.companies.ownerAuditorId, auditorId)))
+        return ada ? toCompany(ada) : undefined
+      }
+      // Kepemilikan ikut di klausa WHERE, bukan diperiksa setelahnya.
+      const [r] = await db.update(s.companies).set(set)
+        .where(and(eq(s.companies.id, id), eq(s.companies.ownerAuditorId, auditorId)))
+        .returning()
+      return r ? toCompany(r) : undefined
+    },
+
+    async deleteCompany(id, auditorId) {
+      // Assessment, undangan, dan share link ikut terhapus lewat ON DELETE CASCADE
+      // di skema, sehingga tidak ada baris yatim yang tertinggal.
+      const hasil = await db.delete(s.companies)
+        .where(and(eq(s.companies.id, id), eq(s.companies.ownerAuditorId, auditorId)))
+        .returning({ id: s.companies.id })
+      return hasil.length > 0
     },
 
     async createAssessment(input) {

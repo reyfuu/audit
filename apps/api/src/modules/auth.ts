@@ -226,6 +226,48 @@ export function authModule({ repo, now = () => new Date(), sendOtp }: AuthDeps) 
       },
     )
 
+    // ── FR-33 perbarui profil sendiri
+    .patch(
+      '/me',
+      async ({ body, user, status }) => {
+        const auditor = await repo.getAuditor(user!.id)
+        if (!auditor) return status(401, err('UNAUTHENTICATED', 'Akun tidak ditemukan'))
+
+        const patch: { name?: string; email?: string } = {}
+        if (body.name !== undefined) {
+          const nama = body.name.trim()
+          if (nama.length < 2) {
+            return status(422, err('INVALID_ANSWER_TYPE', 'Nama minimal 2 karakter'))
+          }
+          patch.name = nama
+        }
+        if (body.email !== undefined) {
+          const email = normalizeEmail(body.email)
+          // Email adalah identitas masuk, jadi tidak boleh bertabrakan dengan
+          // akun lain. Milik sendiri tentu boleh dikirim ulang tanpa berubah.
+          const lain = await repo.getAuditorByEmail(email)
+          if (lain && lain.id !== auditor.id) {
+            return status(409, err('CONFLICT', 'Email sudah dipakai akun lain'))
+          }
+          patch.email = email
+        }
+
+        const baru = await repo.updateAuditor(auditor.id, patch)
+        if (!baru) return status(401, err('UNAUTHENTICATED', 'Akun tidak ditemukan'))
+        return { id: baru.id, email: baru.email, name: baru.name, role: baru.role }
+      },
+      {
+        body: t.Object({
+          name: t.Optional(t.String({ maxLength: 120 })),
+          email: t.Optional(t.String({ format: 'email' })),
+        }),
+        response: {
+          200: S.Me, 401: S.ErrorEnvelope, 409: S.ErrorEnvelope, 422: S.ErrorEnvelope,
+        },
+        detail: { tags: ['Auth'], summary: 'Perbarui nama dan email sendiri' },
+      },
+    )
+
     // ── FR-02 tetapkan atau ganti kata sandi
     .post(
       '/password',

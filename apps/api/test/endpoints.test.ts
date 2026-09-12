@@ -111,3 +111,149 @@ describe('kejujuran x-status pada kontrak', () => {
     expect(terlanjurAda).toEqual([])
   })
 })
+
+describe('FR-05 ubah dan hapus perusahaan', () => {
+  /** Auditor dengan satu perusahaan miliknya. */
+  async function skenario() {
+    const repo = createMemoryRepo()
+    const { app } = createApp({ repo, baseUrl: BASE })
+    const a = await repo.createAuditor({ email: 'a@x.id', name: 'A', role: 'auditor' })
+    const b = await repo.createAuditor({ email: 'b@x.id', name: 'B', role: 'auditor' })
+    const c = await repo.createCompany({
+      owner_auditor_id: a.id, name: 'PT Asli',
+      industry: 'retail_ecommerce', employee_band: '50_99', country: 'ID',
+    })
+    const call = (path: string, init: RequestInit = {}, who = a.id) =>
+      app.handle(new Request(`${BASE}${path}`, {
+        ...init,
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer user:${who}`,
+          ...(init.headers ?? {}),
+        },
+      }))
+    return { app, repo, a, b, c, call }
+  }
+
+  it('PATCH mengubah sebagian field tanpa menyentuh sisanya', async () => {
+    const s = await skenario()
+    const res = await s.call(`/companies/${s.c.id}`, {
+      method: 'PATCH', body: JSON.stringify({ name: 'PT Berubah' }),
+    })
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.name).toBe('PT Berubah')
+    // Field yang tidak dikirim tetap seperti semula.
+    expect(body.industry).toBe('retail_ecommerce')
+    expect(body.employee_band).toBe('50_99')
+    expect(body.id).toBe(s.c.id)
+  })
+
+  it('PATCH tidak dapat memindahkan kepemilikan', async () => {
+    const s = await skenario()
+    await s.call(`/companies/${s.c.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name: 'PT Coba', owner_auditor_id: s.b.id }),
+    })
+    // Perusahaan tetap milik auditor semula.
+    expect(await s.repo.getCompany(s.c.id, s.a.id)).toBeDefined()
+    expect(await s.repo.getCompany(s.c.id, s.b.id)).toBeUndefined()
+  })
+
+  it('auditor lain mendapat 404, bukan 403, agar keberadaannya tidak bocor', async () => {
+    const s = await skenario()
+    const ubah = await s.call(`/companies/${s.c.id}`, {
+      method: 'PATCH', body: JSON.stringify({ name: 'PT Dibajak' }),
+    }, s.b.id)
+    expect(ubah.status).toBe(404)
+
+    const hapus = await s.call(`/companies/${s.c.id}`, { method: 'DELETE' }, s.b.id)
+    expect(hapus.status).toBe(404)
+
+    // Datanya utuh.
+    expect((await s.repo.getCompany(s.c.id, s.a.id))?.name).toBe('PT Asli')
+  })
+
+  it('DELETE menghapus perusahaan beserta assessment dan undangannya', async () => {
+    const s = await skenario()
+    const inv = await (await s.call('/invitations', {
+      method: 'POST', body: JSON.stringify({ company_id: s.c.id }),
+    })).json() as { id: string; assessment_id: string }
+
+    expect((await s.call(`/companies/${s.c.id}`, { method: 'DELETE' })).status).toBe(204)
+
+    expect(await s.repo.getCompany(s.c.id, s.a.id)).toBeUndefined()
+    expect(await s.repo.getAssessment(inv.assessment_id)).toBeUndefined()
+    expect(await s.repo.getInvitation(inv.id)).toBeUndefined()
+    expect(await s.repo.listInvitations(s.a.id)).toHaveLength(0)
+  })
+
+  it('menghapus dua kali tidak menimbulkan galat internal', async () => {
+    const s = await skenario()
+    expect((await s.call(`/companies/${s.c.id}`, { method: 'DELETE' })).status).toBe(204)
+    expect((await s.call(`/companies/${s.c.id}`, { method: 'DELETE' })).status).toBe(404)
+  })
+
+  it('nama yang terlalu pendek ditolak validasi', async () => {
+    const s = await skenario()
+    const res = await s.call(`/companies/${s.c.id}`, {
+      method: 'PATCH', body: JSON.stringify({ name: 'X' }),
+    })
+    expect(res.status).toBe(422)
+  })
+})
+
+describe('FR-33 perbarui profil auditor', () => {
+  it('email dinormalkan dan tetap dapat dipakai masuk', async () => {
+    const repo = createMemoryRepo()
+    const { app } = createApp({ repo, baseUrl: BASE })
+    const a = await repo.createAuditor({ email: 'lama@x.id', name: 'Lama', role: 'auditor' })
+    const res = await app.handle(new Request(`${BASE}/auth/me`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json', authorization: `Bearer user:${a.id}` },
+      body: JSON.stringify({ name: '  Nama Baru  ', email: 'BARU@X.ID' }),
+    }))
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    // Spasi dipangkas dan email dijadikan huruf kecil, supaya pencarian konsisten.
+    expect(body.name).toBe('Nama Baru')
+    expect(body.email).toBe('baru@x.id')
+    expect(await repo.getAuditorByEmail('baru@x.id')).toBeDefined()
+  })
+
+  it('tidak dapat mengambil email milik auditor lain', async () => {
+    const repo = createMemoryRepo()
+    const { app } = createApp({ repo, baseUrl: BASE })
+    const a = await repo.createAuditor({ email: 'a@x.id', name: 'A', role: 'auditor' })
+    await repo.createAuditor({ email: 'b@x.id', name: 'B', role: 'auditor' })
+    const res = await app.handle(new Request(`${BASE}/auth/me`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json', authorization: `Bearer user:${a.id}` },
+      body: JSON.stringify({ email: 'b@x.id' }),
+    }))
+    expect(res.status).toBe(409)
+    expect((await repo.getAuditor(a.id))?.email).toBe('a@x.id')
+  })
+
+  it('peran tidak dapat dinaikkan lewat endpoint profil', async () => {
+    const repo = createMemoryRepo()
+    const { app } = createApp({ repo, baseUrl: BASE })
+    const a = await repo.createAuditor({ email: 'a@x.id', name: 'A', role: 'auditor' })
+    await app.handle(new Request(`${BASE}/auth/me`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json', authorization: `Bearer user:${a.id}` },
+      body: JSON.stringify({ name: 'A', role: 'sysadmin' }),
+    }))
+    expect((await repo.getAuditor(a.id))?.role).toBe('auditor')
+  })
+
+  it('tanpa autentikasi ditolak', async () => {
+    const { app } = createApp({ baseUrl: BASE })
+    const res = await app.handle(new Request(`${BASE}/auth/me`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'Siapa Saja' }),
+    }))
+    expect(res.status).toBe(401)
+  })
+})

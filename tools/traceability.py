@@ -30,7 +30,7 @@ IMPL_MARKERS = {
     "FR-02": ["/auth/login", "hashPassword", "verifyPassword"],
     "FR-03": ["verifyAccessToken", "hashRefreshToken", "revokeSessionFamily"],
     "FR-04": ["/invites", "createAuditorInvite"],
-    "FR-05": ["createCompany"],
+    "FR-05": ["createCompany", "updateCompany", "deleteCompany"],
     "FR-06": ["listCompanies", "owner_auditor_id"],
     "FR-07": ["createAssessment", "questionnaire_version"],
     "FR-08": ["/:token/next"],
@@ -56,6 +56,7 @@ IMPL_MARKERS = {
     "FR-30": ["benchmark_available"],
     "FR-31": ["ai-review", "reviewAnswers"],
     "FR-32": ["ai-review/batch"],
+    "FR-33": ["updateAuditor"],
 }
 
 # Penanda uji: FR dianggap teruji bila salah satu string ini muncul di berkas uji.
@@ -74,6 +75,7 @@ TEST_MARKERS["FR-18"] = ["FR-18"]
 TEST_MARKERS["FR-02"] = ["FR-02"]
 TEST_MARKERS["FR-31"] = ["FR-31"]
 TEST_MARKERS["FR-32"] = ["FR-32"]
+TEST_MARKERS["FR-33"] = ["FR-33"]
 
 rows = []
 for fr in sorted(IMPL_MARKERS, key=lambda x: int(x[3:])):

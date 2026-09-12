@@ -227,6 +227,15 @@ ${bar()}
 // ── Halaman hasil (DESIGN B5, terbuka penuh sesuai FR-30)
 export function resultPage(d: {
   company_name: string
+  /**
+   * Tautan kembali untuk auditor.
+   *
+   * Hanya diisi bila halaman dibuka oleh auditor yang sedang masuk. Responden
+   * dan siapa pun yang membuka tautan bagikan tidak boleh melihatnya: bagi
+   * mereka dashboard bukan tempat yang dapat diakses, dan menampilkan jalan ke
+   * sana hanya membocorkan keberadaan sisi internal produk.
+   */
+  backHref?: string
   result: {
     total_score: number
     level: number
@@ -282,6 +291,13 @@ export function resultPage(d: {
   return layout(`Hasil audit — ${d.company_name}`, `
 ${bar()}
 <main class="wrap">
+  ${d.backHref
+    ? `<p><a class="tautan-balik" href="${esc(d.backHref)}">
+         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
+              aria-hidden="true"><path d="M19 12H5"/><path d="m11 6-6 6 6 6"/></svg>
+         Kembali ke dashboard</a></p>`
+    : ''}
   <div class="card verdict">
     <p class="eyebrow">Hasil audit kesiapan AI</p>
     <h1 style="font-size:20px">${esc(d.company_name)}</h1>

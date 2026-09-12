@@ -79,6 +79,14 @@ export const ICONS = {
   awas: svg('<path d="M10.3 4.3 2.6 17.4A2 2 0 0 0 4.3 20.5h15.4a2 2 0 0 0 1.7-3.1L13.7 4.3a2 2 0 0 0-3.4 0z"/>'
     + '<path d="M12 9.5v4M12 16.8h.01"/>', 18),
 
+  /** Mengubah data yang sudah ada. */
+  ubah: svg('<path d="M4 20h4l10-10a2.5 2.5 0 0 0-3.5-3.5L4.5 16.5z"/><path d="M13.5 6.5 17.5 10.5"/>', 18),
+
+  /** Menghapus data secara permanen. */
+  hapus: svg('<path d="M4 7h16"/><path d="M9.5 7V5.2a1.2 1.2 0 0 1 1.2-1.2h2.6a1.2 1.2 0 0 1 1.2 1.2V7"/>'
+    + '<path d="M6.5 7 7.4 19a2 2 0 0 0 2 1.9h5.2a2 2 0 0 0 2-1.9L17.5 7"/>'
+    + '<path d="M10.5 11v5.5M13.5 11v5.5"/>', 18),
+
   /** Kembali ke halaman sebelumnya. */
   kembali: svg('<path d="M19 12H5"/><path d="m11 6-6 6 6 6"/>', 18),
 } as const

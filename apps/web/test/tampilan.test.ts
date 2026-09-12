@@ -121,7 +121,7 @@ describe('tabel dapat dibaca di layar sempit', () => {
     })
     const perusahaan = await (await t.get('/app/perusahaan')).text()
     expect(perusahaan).toContain('data-l="Industri"')
-    expect(perusahaan).toContain('data-l="Karyawan"')
+    expect(perusahaan).toContain('data-l="Undangan"')
 
     // Terbitkan undangan lewat id perusahaan yang benar-benar milik auditor ini.
     const { items } = await (await t.app.handle(new Request(

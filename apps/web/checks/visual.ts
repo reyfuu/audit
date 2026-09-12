@@ -319,6 +319,63 @@ check('Daftar undangan di ponsel tidak scroll horizontal',
   `konten ${await p6.evaluate(() => document.documentElement.scrollWidth)}px`)
 await p6.close()
 
+/*
+ * CRUD perusahaan lewat antarmuka sungguhan.
+ *
+ * Dipakai perusahaan khusus yang dibuat di sini, bukan salah satu perusahaan
+ * contoh: pemeriksaan berikutnya masih membutuhkan perusahaan yang laporannya
+ * sudah jadi, dan menghapusnya akan menjatuhkan mereka.
+ */
+await p4.goto(`${WEB_BASE}/app/perusahaan`, { waitUntil: 'networkidle' })
+await p4.fill('#n', 'PT Uji CRUD')
+await p4.getByRole('button', { name: 'Tambah perusahaan' }).click()
+await p4.waitForLoadState('networkidle')
+check('Perusahaan baru muncul di daftar setelah ditambahkan',
+  (await p4.locator('.tbl').innerText()).includes('PT Uji CRUD'), 'baris baru tampil')
+
+const tautanUbah = await p4.locator('tr', { hasText: 'PT Uji CRUD' })
+  .locator('a[href^="/app/perusahaan/"]').first().getAttribute('href')
+check('Daftar perusahaan menyediakan aksi ubah', Boolean(tautanUbah),
+  `tautan: ${tautanUbah ?? 'tidak ada'}`)
+
+if (tautanUbah) {
+  await p4.goto(`${WEB_BASE}${tautanUbah}`, { waitUntil: 'networkidle' })
+  await p4.fill('#n', 'PT Sudah Diubah')
+  await p4.getByRole('button', { name: 'Simpan perubahan' }).click()
+  await p4.waitForLoadState('networkidle')
+  check('Perubahan nama perusahaan tersimpan lewat antarmuka',
+    (await p4.locator('h1').textContent())?.includes('PT Sudah Diubah') ?? false,
+    `judul: ${await p4.locator('h1').textContent()}`)
+  await p4.screenshot({ path: '/tmp/siapai-14-ubah-perusahaan.png', fullPage: true })
+
+  // Penghapusan menuntut nama diketik ulang; salah ketik harus tidak berefek.
+  await p4.fill('#konfirmasi', 'salah ketik')
+  await p4.getByRole('button', { name: 'Hapus perusahaan ini' }).click()
+  await p4.waitForLoadState('networkidle')
+  check('Salah mengetik nama membatalkan penghapusan',
+    await p4.locator('.banner-error').count() > 0
+      && (await p4.locator('h1').textContent())?.includes('PT Sudah Diubah') === true,
+    'peringatan tampil dan data tetap ada')
+
+  await p4.fill('#konfirmasi', 'PT Sudah Diubah')
+  await p4.getByRole('button', { name: 'Hapus perusahaan ini' }).click()
+  await p4.waitForLoadState('networkidle')
+  check('Nama yang benar menghapus perusahaan dan kembali ke daftar',
+    new URL(p4.url()).pathname === '/app/perusahaan'
+      && !(await p4.locator('.tbl').innerText()).includes('PT Sudah Diubah'),
+    `berakhir di ${new URL(p4.url()).pathname}`)
+}
+
+// Pembaruan profil sendiri.
+await p4.goto(`${WEB_BASE}/app/akun`, { waitUntil: 'networkidle' })
+await p4.fill('#nm', 'Dimas Auditor Senior')
+await p4.getByRole('button', { name: 'Simpan profil' }).click()
+await p4.waitForLoadState('networkidle')
+check('Nama profil dapat diperbarui dari halaman akun',
+  await p4.locator('#nm').inputValue() === 'Dimas Auditor Senior',
+  `nilai tersimpan: ${await p4.locator('#nm').inputValue()}`)
+await p4.screenshot({ path: '/tmp/siapai-15-akun.png', fullPage: true })
+
 // Kembali ke daftar undangan di laptop: pemeriksaan berikutnya menilai halaman itu.
 await p4.goto(`${WEB_BASE}/app/undangan`, { waitUntil: 'networkidle' })
 await p4.screenshot({ path: '/tmp/siapai-7-dashboard.png', fullPage: true })
@@ -372,7 +429,28 @@ if (punyaHasil) {
   check('Laporan bagikan memuat ketujuh dimensi',
     await p5.locator('.dim').count() === 7,
     `${await p5.locator('.dim').count()} dimensi`)
+  // Pembaca tanpa sesi tidak boleh ditawari jalan ke dashboard auditor.
+  check('Laporan publik tidak menampilkan tautan ke dashboard',
+    await p5.getByText('Kembali ke dashboard').count() === 0,
+    'tidak ada tautan dashboard')
   await anonim.close()
+
+  // Auditor yang sedang masuk justru harus punya jalan kembali.
+  await p4.goto(`${WEB_BASE}${detailDipilih}`, { waitUntil: 'networkidle' })
+  const tautanLaporan = await p4.getByRole('link', { name: 'Lihat laporan' }).getAttribute('href')
+  if (tautanLaporan) {
+    await p4.goto(tautanLaporan, { waitUntil: 'networkidle' })
+    const balik = p4.getByRole('link', { name: /Kembali ke dashboard/ })
+    check('Auditor melihat tombol kembali di halaman laporan',
+      await balik.count() > 0, 'tautan kembali tampil')
+    if (await balik.count() > 0) {
+      await balik.first().click()
+      await p4.waitForLoadState('networkidle')
+      check('Tombol kembali benar-benar membawa ke dashboard',
+        new URL(p4.url()).pathname.startsWith('/app'),
+        `berakhir di ${new URL(p4.url()).pathname}`)
+    }
+  }
 }
 
 await browser.close()

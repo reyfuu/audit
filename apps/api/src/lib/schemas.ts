@@ -48,6 +48,16 @@ export const CompanyInput = t.Object({
   province: t.Optional(t.String()),
 })
 
+/** Perubahan sebagian profil perusahaan (FR-05). */
+export const CompanyPatch = t.Object({
+  name: t.Optional(t.String({ minLength: 2, maxLength: 120 })),
+  industry: t.Optional(Industry),
+  employee_band: t.Optional(EmployeeBand),
+  revenue_band: t.Optional(RevenueBand),
+  country: t.Optional(t.String()),
+  province: t.Optional(t.String()),
+})
+
 export const Company = t.Composite([
   CompanyInput,
   t.Object({

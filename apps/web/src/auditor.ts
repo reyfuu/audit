@@ -231,6 +231,7 @@ ${macet.length ? `<div class="card">
   <span class="spacer"></span>
   <span class="muted" style="line-height:44px">${companies.length} terdaftar</span>
 </div>
+${query.dihapus ? banner('ok', 'Perusahaan dan seluruh datanya telah dihapus.') : ''}
 
 <form class="toolbar" method="get" action="/app/perusahaan">
   <input class="field" type="search" name="q" value="${esc(query.q ?? '')}"
@@ -240,16 +241,18 @@ ${macet.length ? `<div class="card">
 
 <div class="card">
   <table class="tbl">
-    <thead><tr><th>Nama</th><th>Industri</th><th>Karyawan</th><th>Undangan</th></tr></thead>
+    <thead><tr><th>Nama</th><th>Industri</th><th>Undangan</th><th>Aksi</th></tr></thead>
     <tbody>${potongan.length === 0
       ? `<tr><td colspan="4" class="muted" style="padding:24px 6px">
            Belum ada perusahaan yang cocok.</td></tr>`
       : potongan.map((c) => {
           const inv = undanganPer.get(c.id)
           return `<tr>
-            <td><strong>${esc(c.name)}</strong></td>
+            <td>
+              <strong>${esc(c.name)}</strong><br>
+              <span class="muted">${esc(KARYAWAN_LABEL[c.employee_band] ?? c.employee_band)}</span>
+            </td>
             <td data-l="Industri">${esc(INDUSTRI_LABEL[c.industry] ?? c.industry)}</td>
-            <td data-l="Karyawan">${esc(KARYAWAN_LABEL[c.employee_band] ?? c.employee_band)}</td>
             <td data-l="Undangan">${inv
               ? `<a href="/app/undangan/${esc(inv.id)}">
                    ${esc(STATUS_LABEL[inv.status] ?? inv.status)}</a>`
@@ -257,6 +260,8 @@ ${macet.length ? `<div class="card">
                    <input type="hidden" name="company_id" value="${esc(c.id)}">
                    <button class="btn btn-sm" type="submit">Terbitkan</button>
                  </form>`}</td>
+            <td><a class="tautan-aksi" href="/app/perusahaan/${esc(c.id)}"
+                   aria-label="Ubah ${esc(c.name)}">${ICONS.ubah}Ubah</a></td>
           </tr>`
         }).join('')}</tbody>
   </table>
@@ -290,7 +295,134 @@ ${macet.length ? `<div class="card">
   </form>
 </div>`,
       }), 200, cookiesBaru)
-    }, { query: t.Object({ q: t.Optional(t.String()), page: t.Optional(t.String()) }) })
+    }, {
+      query: t.Object({
+        q: t.Optional(t.String()),
+        page: t.Optional(t.String()),
+        dihapus: t.Optional(t.String()),
+      }),
+    })
+
+    // ── FR-05 ubah dan hapus perusahaan
+    .get('/app/perusahaan/:id', async ({ sesi, params, query }) => {
+      const s = await sesi()
+      if (!s) return redirect('/')
+      const { api, cookiesBaru } = s
+      const me = await profil(api)
+      const res = await api(`/companies/${params.id}`)
+      if (!res.ok) {
+        return html(shell({
+          title: 'Tidak ditemukan', active: '/app/perusahaan',
+          ...(me ? { email: me.email } : {}),
+          body: `<div class="card"><h1>Perusahaan tidak ditemukan</h1>
+                 <p><a href="/app/perusahaan">Kembali ke daftar</a></p></div>`,
+        }), 404, cookiesBaru)
+      }
+      const c = await res.json() as Company
+      // Undangan menentukan apa yang hilang bila perusahaan ini dihapus.
+      const inv = (await daftarUndangan(api)).find((i) => i.company_id === c.id)
+      const adaLaporan = inv?.status === 'SCORED'
+
+      return html(shell({
+        title: `Ubah ${c.name}`, active: '/app/perusahaan', ...(me ? { email: me.email } : {}),
+        body: `
+<p><a class="tautan-balik" href="/app/perusahaan">${ICONS.kembali}Kembali ke daftar</a></p>
+<div class="page-head"><h1>${esc(c.name)}</h1></div>
+${query.gagal ? banner('error', esc(query.gagal)) : ''}
+${query.ok ? banner('ok', 'Perubahan disimpan.') : ''}
+
+<div class="card">
+  <h2>Profil perusahaan</h2>
+  <form method="post" action="/app/perusahaan/${esc(c.id)}">
+    <label class="lbl" for="n">Nama perusahaan</label>
+    <input class="field" name="name" id="n" required minlength="2" maxlength="120"
+           value="${esc(c.name)}" style="width:100%;margin-bottom:12px">
+    <div class="grid grid-2">
+      <div>
+        <label class="lbl" for="i">Industri</label>
+        <select class="field" name="industry" id="i" style="width:100%">
+          ${Object.entries(INDUSTRI_LABEL).map(([v, l]) =>
+            `<option value="${v}"${v === c.industry ? ' selected' : ''}>${esc(l)}</option>`).join('')}
+        </select>
+      </div>
+      <div>
+        <label class="lbl" for="e">Jumlah karyawan</label>
+        <select class="field" name="employee_band" id="e" style="width:100%">
+          ${Object.entries(KARYAWAN_LABEL).map(([v, l]) =>
+            `<option value="${v}"${v === c.employee_band ? ' selected' : ''}>${esc(l)}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    <button class="btn btn-primary btn-sm btn-icon" type="submit" style="margin-top:14px">
+      ${ICONS.ok}Simpan perubahan</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Hapus perusahaan</h2>
+  <p class="muted">
+    Menghapus ${esc(c.name)} juga menghapus undangan, jawaban responden,
+    ${adaLaporan ? 'laporan yang sudah jadi, ' : ''}dan tautan bagikannya.
+    Tindakan ini tidak dapat dibatalkan.
+  </p>
+  ${adaLaporan
+    ? banner('warn', 'Perusahaan ini sudah punya laporan selesai. Unduh PDF-nya dulu bila masih diperlukan.')
+    : ''}
+  <form method="post" action="/app/perusahaan/${esc(c.id)}/hapus" style="margin-top:12px">
+    <label class="lbl" for="konfirmasi">
+      Ketik <strong>${esc(c.name)}</strong> untuk menegaskan penghapusan</label>
+    <input class="field" name="konfirmasi" id="konfirmasi" required autocomplete="off"
+           placeholder="${esc(c.name)}" style="width:100%;max-width:420px;margin-bottom:12px">
+    <button class="btn btn-sm btn-icon btn-bahaya" type="submit">
+      ${ICONS.hapus}Hapus perusahaan ini</button>
+  </form>
+</div>`,
+      }), 200, cookiesBaru)
+    }, {
+      params: t.Object({ id: t.String() }),
+      query: t.Object({ gagal: t.Optional(t.String()), ok: t.Optional(t.String()) }),
+    })
+
+    .post('/app/perusahaan/:id', async ({ sesi, params, body }) => {
+      const s = await sesi()
+      if (!s) return redirect('/')
+      const f = body as Record<string, string>
+      const res = await s.api(`/companies/${params.id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name: f.name, industry: f.industry, employee_band: f.employee_band,
+        }),
+      })
+      if (res.ok) return redirect(`/app/perusahaan/${params.id}?ok=1`)
+      return redirect(`/app/perusahaan/${params.id}?gagal=${
+        encodeURIComponent(await pesan(res))}`)
+    }, { params: t.Object({ id: t.String() }) })
+
+    .post('/app/perusahaan/:id/hapus', async ({ sesi, params, body }) => {
+      const s = await sesi()
+      if (!s) return redirect('/')
+      const f = body as Record<string, string>
+      const c = await (await s.api(`/companies/${params.id}`)).json()
+        .catch(() => null) as Company | null
+      if (!c) return redirect('/app/perusahaan')
+
+      /*
+       * Nama harus diketik ulang. Penghapusan ini melenyapkan laporan yang
+       * mungkin sudah dikirim ke klien, jadi satu klik saja terlalu murah
+       * untuk tindakan yang tidak dapat dibatalkan.
+       */
+      if ((f.konfirmasi ?? '').trim() !== c.name) {
+        return redirect(`/app/perusahaan/${params.id}?gagal=${
+          encodeURIComponent('Nama yang diketik tidak cocok, penghapusan dibatalkan')}`)
+      }
+      const res = await s.api(`/companies/${params.id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        return redirect(`/app/perusahaan/${params.id}?gagal=${
+          encodeURIComponent(await pesan(res))}`)
+      }
+      return redirect('/app/perusahaan?dihapus=1')
+    }, { params: t.Object({ id: t.String() }) })
 
     // ── Tinjauan AI lintas perusahaan (FR-31, FR-32)
     .get('/app/tinjauan', async ({ sesi, query }) => {

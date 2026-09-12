@@ -42,6 +42,13 @@ Matriks izin (RBAC) diberlakukan di layer API, bukan hanya UI.
 - AC2: Perubahan profil setelah assessment `SCORED` tidak mengubah skor historis.
 - AC3: Perusahaan klien selalu dimiliki oleh satu akun auditor; auditor lain tidak dapat melihatnya.
 
+**FR-05b Ubah dan hapus perusahaan klien.**
+- AC1: Perubahan bersifat sebagian; field yang tidak dikirim dibiarkan apa adanya.
+- AC2: Kepemilikan dan tanggal pembuatan tidak dapat diubah lewat jalur ini.
+- AC3: Menghapus perusahaan ikut menghapus assessment, jawaban, undangan, dan tautan bagikannya; tidak ada baris yatim yang tertinggal.
+- AC4: Karena tidak dapat dibatalkan, antarmuka menuntut nama perusahaan diketik ulang sebelum menghapus.
+- AC5: Perusahaan milik auditor lain membalas `404`, bukan `403`.
+
 **FR-06 Daftar perusahaan klien.** AC: Auditor hanya melihat perusahaan miliknya sendiri; permintaan ke perusahaan milik auditor lain mengembalikan `404`, bukan `403`, agar keberadaannya tidak bocor.
 
 ## 4. Modul Assessment (inti)
@@ -154,6 +161,11 @@ Pertanyaan tidak visible dikeluarkan dari pembilang dan penyebut (tidak dihukum)
 - AC1: Seluruh bagian laporan dapat diakses oleh responden dan auditor tanpa pembayaran.
 - AC2: Kode error `PAYMENT_REQUIRED` dan status HTTP `402` tidak boleh muncul di mana pun dalam sistem.
 
+**FR-33 Perbarui profil sendiri.** Auditor dapat mengubah nama dan emailnya sendiri.
+- AC1: Email juga merupakan kredensial masuk, sehingga yang baru harus langsung dapat dipakai login.
+- AC2: Email yang sudah dipakai akun lain ditolak dengan `409`.
+- AC3: Peran tidak dapat diubah lewat endpoint ini.
+
 ## 8b. Modul Tinjauan AI
 
 **FR-31 Tinjauan AI atas jawaban satu assessment.** Skor tetap deterministik dari rubrik; AI hanya menilai kualitas jawaban.
@@ -207,3 +219,5 @@ Kode: `UNAUTHENTICATED, FORBIDDEN, NOT_FOUND, CONFLICT, INCOMPLETE, INVALID_ANSW
 | FR-15 | F21 | Unit: fallback saat sampel < 30 |
 | FR-02 | G1 | Integrasi: login benar/salah, ganti kata sandi, cookie sesi di web |
 | FR-31, FR-32 | BA3 | Integrasi: tinjauan dengan model stub, caching snapshot, 503 saat model absen |
+| FR-05b | F05 | Integrasi: ubah sebagian field, hapus berantai, isolasi antar auditor |
+| FR-33 | G1 | Integrasi: ganti email lalu masuk memakai email baru, tolak email milik orang lain |

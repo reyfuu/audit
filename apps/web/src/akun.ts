@@ -125,6 +125,8 @@ export function akunModule({ raw, publicBase }: AkunDeps) {
         body: `
 <div class="page-head"><h1>Akun</h1></div>
 
+${query.ok === 'profil'
+  ? `<div class="banner banner-ok" role="status">${ICONS.ok}<span>Profil diperbarui.</span></div>` : ''}
 ${query.ok === 'sandi'
   ? `<div class="banner banner-ok" role="status">${ICONS.ok}<span>Kata sandi berhasil disimpan.</span></div>` : ''}
 ${query.ok === 'undang'
@@ -135,7 +137,18 @@ ${query.gagal
 
 <div class="card">
   <h2>Profil</h2>
-  <p class="muted">${esc(me.name)} · ${esc(me.email)} · peran ${esc(me.role)}</p>
+  <p class="muted">Peran Anda: ${esc(me.role)}. Email juga dipakai untuk masuk,
+     jadi mengubahnya berarti mengubah kredensial Anda.</p>
+  <form method="post" action="/app/akun/profil" style="max-width:420px">
+    <label class="lbl" for="nm">Nama</label>
+    <input class="field" id="nm" name="name" required minlength="2" maxlength="120"
+           value="${esc(me.name)}" style="width:100%;margin-bottom:12px">
+    <label class="lbl" for="em2">Email</label>
+    <input class="field" id="em2" name="email" type="email" required
+           value="${esc(me.email)}" style="width:100%;margin-bottom:12px">
+    <button class="btn btn-primary btn-sm btn-icon" type="submit">
+      ${ICONS.ok}Simpan profil</button>
+  </form>
 </div>
 
 <div class="card">
@@ -177,6 +190,22 @@ ${bolehMengundang
      </div>`}`,
       }), 200, s.cookiesBaru)
     }, { query: t.Object({ ok: t.Optional(t.String()), gagal: t.Optional(t.String()) }) })
+
+    // ── FR-33 perbarui profil sendiri
+    .post('/app/akun/profil', async ({ sesi, body }) => {
+      const s = await sesi()
+      if (!s) return redirect('/')
+      const f = body as Record<string, string>
+      const res = await s.api('/auth/me', {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: f.name ?? '', email: f.email ?? '' }),
+      })
+      if (res.ok) return redirect('/app/akun?ok=profil')
+      const e = await res.json().catch(() => null) as { error?: { message?: string } } | null
+      return redirect(`/app/akun?gagal=${
+        encodeURIComponent(e?.error?.message ?? 'Profil tidak dapat disimpan')}`)
+    }, { body: t.Any() })
 
     .post('/app/akun/sandi', async ({ sesi, body }) => {
       const s = await sesi()

@@ -142,6 +142,10 @@ export interface Repo {
   getAuditorByEmail(email: string): Promise<AuditorRow | undefined>
   /** Menetapkan atau mengganti kata sandi auditor (FR-02). */
   setAuditorPassword(id: string, passwordHash: string): Promise<void>
+  /** Memperbarui profil auditor sendiri: nama dan email (FR-33). */
+  updateAuditor(
+    id: string, patch: { name?: string; email?: string },
+  ): Promise<AuditorRow | undefined>
 
   // otp
   createOtpChallenge(input: Omit<OtpChallengeRow, 'created_at'>): Promise<OtpChallengeRow>
@@ -176,6 +180,15 @@ export interface Repo {
   /** Ber-scope auditor: perusahaan milik auditor lain dianggap tidak ada. */
   getCompany(id: string, auditorId: string): Promise<CompanyRow | undefined>
   listCompanies(auditorId: string): Promise<CompanyRow[]>
+  /** Memperbarui profil perusahaan; kepemilikan ditegakkan di layer ini (FR-05). */
+  updateCompany(
+    id: string, auditorId: string, patch: Partial<Omit<CompanyRow, 'id' | 'owner_auditor_id' | 'created_at'>>,
+  ): Promise<CompanyRow | undefined>
+  /**
+   * Menghapus perusahaan beserta assessment dan undangannya.
+   * Mengembalikan false bila bukan milik auditor tersebut.
+   */
+  deleteCompany(id: string, auditorId: string): Promise<boolean>
 
   // assessment
   createAssessment(input: Omit<AssessmentRow, 'answers' | 'server_revision'>): Promise<AssessmentRow>
@@ -222,6 +235,17 @@ export function createMemoryRepo(): Repo {
     async setAuditorPassword(id, passwordHash) {
       const a = auditors.get(id)
       if (a) auditors.set(id, { ...a, password_hash: passwordHash })
+    },
+    async updateAuditor(id, patch) {
+      const a = auditors.get(id)
+      if (!a) return undefined
+      const baru: AuditorRow = {
+        ...a,
+        ...(patch.name !== undefined ? { name: patch.name } : {}),
+        ...(patch.email !== undefined ? { email: patch.email } : {}),
+      }
+      auditors.set(id, baru)
+      return baru
     },
 
     async createOtpChallenge(input) {
@@ -292,6 +316,39 @@ export function createMemoryRepo(): Repo {
     },
     async listCompanies(auditorId) {
       return [...companies.values()].filter((c) => c.owner_auditor_id === auditorId)
+    },
+    async updateCompany(id, auditorId, patch) {
+      const c = companies.get(id)
+      if (!c || c.owner_auditor_id !== auditorId) return undefined
+      // Field identitas tidak ikut berubah walau ada di patch.
+      const { id: _i, owner_auditor_id: _o, created_at: _c, ...aman } = patch as Record<string, unknown>
+      const baru = { ...c, ...aman } as CompanyRow
+      companies.set(id, baru)
+      return baru
+    },
+    async deleteCompany(id, auditorId) {
+      const c = companies.get(id)
+      if (!c || c.owner_auditor_id !== auditorId) return false
+      // Anak-anaknya ikut dibuang agar tidak menjadi data yatim.
+      for (const inv of [...invitations.values()]) {
+        if (inv.company_id === id) {
+          invitations.delete(inv.id)
+          byTokenHash.delete(inv.token_hash)
+        }
+      }
+      for (const a of [...assessments.values()]) {
+        if (a.company_id === id) {
+          for (const s of [...shares.values()]) {
+            if (s.assessment_id === a.id) {
+              shares.delete(s.id)
+              sharesByHash.delete(s.token_hash)
+            }
+          }
+          assessments.delete(a.id)
+        }
+      }
+      companies.delete(id)
+      return true
     },
 
     async createAssessment(input) {

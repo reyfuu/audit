@@ -131,6 +131,63 @@ for (const k of kasus) {
       expect(await repo.listCompanies(a.id)).toHaveLength(1)
     })
 
+    it('memperbarui perusahaan hanya untuk pemiliknya (FR-05)', async () => {
+      const a = await repo.createAuditor(contohAuditor)
+      const b = await repo.createAuditor({ ...contohAuditor, email: 'b@x.id', name: 'Other' })
+      const c = await repo.createCompany(contohCompany(a.id))
+
+      const ubah = await repo.updateCompany(c.id, a.id, { name: 'PT Berubah' })
+      expect(ubah?.name).toBe('PT Berubah')
+      // Field yang tidak disebut tetap utuh.
+      expect(ubah?.industry).toBe(contohCompany(a.id).industry)
+
+      // Auditor lain tidak dapat menyentuhnya sama sekali.
+      expect(await repo.updateCompany(c.id, b.id, { name: 'PT Dibajak' })).toBeUndefined()
+      expect((await repo.getCompany(c.id, a.id))?.name).toBe('PT Berubah')
+    })
+
+    it('menghapus perusahaan beserta assessment dan undangannya (FR-05)', async () => {
+      const a = await repo.createAuditor(contohAuditor)
+      const c = await repo.createCompany(contohCompany(a.id))
+      const as = await repo.createAssessment({
+        id: crypto.randomUUID(), company_id: c.id, status: 'IN_PROGRESS',
+        questionnaire_version: '1.0.0', rubric_version: '1.0.0',
+        started_at: new Date().toISOString(), submitted_at: null,
+      })
+      const inv = await repo.createInvitation({
+        id: crypto.randomUUID(), company_id: c.id, assessment_id: as.id,
+        token_hash: `hapus-${crypto.randomUUID()}`, token_sealed: 'x', status: 'SENT',
+        issued_at: new Date().toISOString(), opened_at: null, submitted_at: null,
+        expires_at: new Date(Date.now() + 864e5).toISOString(), revoked_at: null,
+        reminder_count: 0,
+      })
+
+      expect(await repo.deleteCompany(c.id, a.id)).toBe(true)
+      expect(await repo.getCompany(c.id, a.id)).toBeUndefined()
+      // Tidak ada baris yatim yang tertinggal.
+      expect(await repo.getAssessment(as.id)).toBeUndefined()
+      expect(await repo.getInvitation(inv.id)).toBeUndefined()
+      expect(await repo.findByTokenHash(inv.token_hash)).toBeUndefined()
+    })
+
+    it('tidak dapat menghapus perusahaan milik auditor lain (FR-06)', async () => {
+      const a = await repo.createAuditor(contohAuditor)
+      const b = await repo.createAuditor({ ...contohAuditor, email: 'b@x.id', name: 'Other' })
+      const c = await repo.createCompany(contohCompany(a.id))
+
+      expect(await repo.deleteCompany(c.id, b.id)).toBe(false)
+      expect(await repo.getCompany(c.id, a.id)).toBeDefined()
+    })
+
+    it('memperbarui nama dan email auditor (FR-33)', async () => {
+      const a = await repo.createAuditor(contohAuditor)
+      const baru = await repo.updateAuditor(a.id, { name: 'Nama Baru', email: 'baru@x.id' })
+      expect(baru?.name).toBe('Nama Baru')
+      expect(baru?.email).toBe('baru@x.id')
+      // Pencarian lewat email mengikuti nilai yang baru.
+      expect((await repo.getAuditorByEmail('baru@x.id'))?.id).toBe(a.id)
+    })
+
     it('menyimpan seluruh field perusahaan termasuk yang opsional', async () => {
       const a = await repo.createAuditor(contohAuditor)
       const c = await repo.createCompany({

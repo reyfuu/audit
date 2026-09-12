@@ -10,6 +10,7 @@ import { auditorModule } from './auditor'
 import type { RawApi } from './auth-guard'
 import { loginModule } from './login'
 import { createWeb } from './web'
+import { sessionApi, secureDari } from './auth-guard'
 
 export interface WebAppDeps {
   /** Pemanggil API; token sesi disuntikkan per permintaan bila ada. */
@@ -24,5 +25,11 @@ export function createWebApp({ raw, publicBase }: WebAppDeps) {
     .use(loginModule({ raw, publicBase }))
     .use(akunModule({ raw, publicBase }))
     .use(auditorModule({ raw, publicBase }))
-    .use(createWeb({ api: (path, init) => raw(path, init) }))
+    .use(createWeb({
+      api: (path, init) => raw(path, init),
+      // Laporan dibuka oleh responden, publik, dan auditor. Hanya yang terakhir
+      // yang boleh melihat jalan kembali ke dashboard.
+      adaSesiAuditor: async (cookie) =>
+        (await sessionApi(raw, cookie, secureDari(publicBase))) !== null,
+    }))
 }

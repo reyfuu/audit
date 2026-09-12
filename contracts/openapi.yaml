@@ -195,6 +195,26 @@ paths:
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Me' } } } }
         '401': { $ref: '#/components/responses/Unauthenticated' }
+    patch:
+      tags: [Auth]
+      summary: Perbarui nama dan email sendiri (FR-33)
+      description: |
+        Email juga merupakan kredensial masuk, sehingga tidak boleh bertabrakan
+        dengan akun lain. Peran tidak dapat diubah lewat endpoint ini.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string, minLength: 2, maxLength: 120 }
+                email: { type: string, format: email }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Me' } } } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
 
   /auth/invites:
     x-status: implemented
@@ -225,6 +245,83 @@ paths:
                   expires_at: { type: string, format: date-time }
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
+
+  # ─────────────────────── Companies (auditor) ───────────────────────
+  /companies:
+    x-status: implemented
+    post:
+      tags: [Companies]
+      summary: Daftarkan perusahaan klien (FR-05)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CompanyInput' }
+      responses:
+        '201': { description: Dibuat, content: { application/json: { schema: { $ref: '#/components/schemas/Company' } } } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+    get:
+      tags: [Companies]
+      summary: Daftar perusahaan klien milik auditor (FR-06)
+      description: |
+        Hanya perusahaan milik auditor pemanggil yang dikembalikan; isolasi
+        ditegakkan di klausa WHERE, bukan hanya di guard.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Company' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /companies/{companyId}:
+    x-status: implemented
+    parameters:
+      - name: companyId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Companies]
+      summary: Detail perusahaan klien (FR-05)
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Company' } } } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Companies]
+      summary: Ubah profil perusahaan klien (FR-05)
+      description: |
+        Hanya field yang dikirim yang berubah. Kepemilikan dan tanggal pembuatan
+        tidak dapat diubah. Milik auditor lain membalas `404`, bukan `403`,
+        agar keberadaannya tidak bocor (FR-06).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CompanyPatch' }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Company' } } } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+    delete:
+      tags: [Companies]
+      summary: Hapus perusahaan klien beserta datanya (FR-05)
+      description: |
+        Assessment, jawaban, undangan, dan tautan bagikan milik perusahaan ini
+        ikut terhapus. Tindakan ini tidak dapat dibatalkan, sehingga antarmuka
+        menuntut penegasan sebelum memanggilnya.
+      responses:
+        '204': { description: Terhapus }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   # ─────────────────────── Invitations (auditor) ───────────────────────
   /invitations:
@@ -831,6 +928,38 @@ components:
       content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
 
   schemas:
+    CompanyInput:
+      type: object
+      required: [name, industry, employee_band]
+      properties:
+        name: { type: string, minLength: 2, maxLength: 120 }
+        industry: { $ref: '#/components/schemas/Industry' }
+        employee_band: { $ref: '#/components/schemas/EmployeeBand' }
+        revenue_band: { $ref: '#/components/schemas/RevenueBand' }
+        country: { type: string, default: ID }
+        province: { type: string }
+
+    CompanyPatch:
+      type: object
+      description: Perubahan sebagian; field yang tidak dikirim dibiarkan apa adanya.
+      properties:
+        name: { type: string, minLength: 2, maxLength: 120 }
+        industry: { $ref: '#/components/schemas/Industry' }
+        employee_band: { $ref: '#/components/schemas/EmployeeBand' }
+        revenue_band: { $ref: '#/components/schemas/RevenueBand' }
+        country: { type: string }
+        province: { type: string }
+
+    Company:
+      allOf:
+        - $ref: '#/components/schemas/CompanyInput'
+        - type: object
+          required: [id, owner_auditor_id, created_at]
+          properties:
+            id: { type: string, format: uuid }
+            owner_auditor_id: { type: string, format: uuid }
+            created_at: { type: string, format: date-time }
+
     AiReview:
       type: object
       description: |

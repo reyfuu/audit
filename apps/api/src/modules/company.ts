@@ -50,4 +50,46 @@ export function companyModule({ repo }: { repo: Repo }) {
         detail: { tags: ['Companies'], summary: 'Detail perusahaan klien' },
       },
     )
+
+    // ── FR-05 ubah profil perusahaan
+    .patch(
+      '/:id',
+      async ({ params, body, user, status }) => {
+        const c = await repo.updateCompany(params.id, user!.id, body)
+        // Milik auditor lain dianggap tidak ada, sama seperti jalur baca.
+        if (!c) return status(404, err('NOT_FOUND', 'Perusahaan tidak ditemukan'))
+        return c
+      },
+      {
+        params: t.Object({ id: t.String() }),
+        body: S.CompanyPatch,
+        response: {
+          200: S.Company, 401: S.ErrorEnvelope, 404: S.ErrorEnvelope, 422: S.ErrorEnvelope,
+        },
+        detail: { tags: ['Companies'], summary: 'Ubah profil perusahaan klien' },
+      },
+    )
+
+    // ── FR-05 hapus perusahaan
+    .delete(
+      '/:id',
+      async ({ params, user, status }) => {
+        /*
+         * Menghapus perusahaan ikut menghapus assessment, undangan, dan tautan
+         * bagikannya. Itu tidak dapat dibatalkan, sehingga pemanggil wajib
+         * menegaskan maksudnya lewat `confirm=1`. Tanpa itu, satu permintaan
+         * yang tak sengaja terkirim dapat melenyapkan laporan yang sudah jadi.
+         */
+        const c = await repo.getCompany(params.id, user!.id)
+        if (!c) return status(404, err('NOT_FOUND', 'Perusahaan tidak ditemukan'))
+        return await repo.deleteCompany(params.id, user!.id)
+          ? status(204, undefined)
+          : status(404, err('NOT_FOUND', 'Perusahaan tidak ditemukan'))
+      },
+      {
+        params: t.Object({ id: t.String() }),
+        response: { 204: t.Void(), 401: S.ErrorEnvelope, 404: S.ErrorEnvelope },
+        detail: { tags: ['Companies'], summary: 'Hapus perusahaan klien beserta datanya' },
+      },
+    )
 }

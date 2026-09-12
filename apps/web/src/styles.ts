@@ -105,6 +105,11 @@ legend { font-size:18px; line-height:1.4; font-weight:600; margin-bottom:4px; pa
 .missing-list a { display:block; padding:10px 0; border-bottom:1px solid var(--border);
   color:var(--brand-600); min-height:44px; }
 
+/* Tautan kembali: ikon dan teks sebaris, target sentuh tetap memadai. */
+.tautan-balik { display:inline-flex; align-items:center; gap:6px; color:var(--brand-600);
+  text-decoration:none; min-height:44px; }
+.tautan-balik:hover { text-decoration:underline; }
+
 .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px;
   overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0; }
 
@@ -231,6 +236,14 @@ export const APP_STYLES = `
 .field:focus-visible { outline:2px solid var(--brand-600); outline-offset:1px; }
 label.lbl { display:block; font-size:13px; color:var(--muted); margin-bottom:4px; }
 .btn-sm { min-height:44px; padding:0 16px; font-size:14px; flex:none; width:auto; }
+/* Tindakan merusak diberi warna bahaya: keputusannya harus terasa berbeda
+   dari tombol biasa sebelum ditekan, bukan sesudah. */
+.btn-bahaya { color:var(--danger); border-color:var(--danger); background:var(--surface); }
+.btn-bahaya:hover { background:#FBEAEA; }
+/* Tautan aksi di dalam tabel: ikon dan teks sebaris. */
+.tautan-aksi { display:inline-flex; align-items:center; gap:6px; color:var(--brand-600);
+  text-decoration:none; min-height:44px; justify-content:flex-end; }
+.tautan-aksi:hover { text-decoration:underline; }
 
 .tbl tbody tr:hover { background:var(--bg); }
 .tbl td a { color:var(--brand-600); }
@@ -265,10 +278,6 @@ label.lbl { display:block; font-size:13px; color:var(--muted); margin-bottom:4px
   .side a.nav { min-height:40px; }
 }
 
-/* Tautan kembali: ikon dan teks sebaris, target sentuh tetap memadai. */
-.tautan-balik { display:inline-flex; align-items:center; gap:6px; color:var(--brand-600);
-  text-decoration:none; min-height:44px; }
-.tautan-balik:hover { text-decoration:underline; }
 
 .login-brand { display:flex; align-items:center; gap:10px; margin-bottom:14px;
   font-weight:700; font-size:18px; color:var(--brand-900); }
