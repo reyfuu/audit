@@ -1,0 +1,950 @@
+openapi: 3.1.0
+info:
+  title: SiapAI — AI Readiness Audit API
+  version: 1.0.0
+  description: |
+    Kontrak API untuk aplikasi audit kesiapan AI bisnis (SiapAI).
+    Sumber kebenaran tipe untuk frontend dan backend.
+    Semua endpoint (kecuali /public/*, /auth/*) memerlukan Bearer token.
+    Endpoint ber-scope organisasi memerlukan header `X-Org-Id`.
+  contact: { name: SiapAI Product, email: product@siapai.id }
+  license: { name: Proprietary }
+servers:
+  - { url: 'https://api.siapai.id/v1', description: production }
+  - { url: 'https://staging-api.siapai.id/v1', description: staging }
+  - { url: 'http://localhost:3001/v1', description: local }
+
+tags:
+  - { name: Auth }
+  - { name: Organizations }
+  - { name: Questionnaire }
+  - { name: Assessments }
+  - { name: Results }
+  - { name: Reports }
+  - { name: Benchmark }
+  - { name: Billing }
+  - { name: Admin }
+  - { name: Public }
+
+security:
+  - bearerAuth: []
+
+paths:
+  # ───────────────────────── Auth ─────────────────────────
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Daftar dengan email, kirim OTP
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+                name: { type: string, maxLength: 120 }
+      responses:
+        '202': { description: OTP terkirim, content: { application/json: { schema: { $ref: '#/components/schemas/OtpChallenge' } } } }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /auth/verify-otp:
+    post:
+      tags: [Auth]
+      summary: Verifikasi OTP dan terbitkan token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [challenge_id, code]
+              properties:
+                challenge_id: { type: string, format: uuid }
+                code: { type: string, pattern: '^[0-9]{6}$' }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/TokenPair' } } } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /auth/google:
+    post:
+      tags: [Auth]
+      summary: Login via Google OAuth2 id_token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [id_token], properties: { id_token: { type: string } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/TokenPair' } } } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Rotasi refresh token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [refresh_token], properties: { refresh_token: { type: string } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/TokenPair' } } } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Cabut refresh token
+      responses: { '204': { description: No Content } }
+
+  /me:
+    get:
+      tags: [Auth]
+      summary: Profil user dan keanggotaan organisasi
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Me' } } } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  # ─────────────────────── Organizations ───────────────────────
+  /organizations:
+    get:
+      tags: [Organizations]
+      summary: Daftar organisasi milik user
+      responses:
+        '200':
+          description: OK
+          content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Organization' } } } }
+    post:
+      tags: [Organizations]
+      summary: Buat organisasi
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/OrganizationInput' } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Organization' } } } }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+
+  /organizations/{orgId}:
+    parameters: [{ $ref: '#/components/parameters/OrgIdPath' }]
+    get:
+      tags: [Organizations]
+      summary: Detail organisasi
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Organization' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Organizations]
+      summary: Perbarui profil organisasi
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/OrganizationInput' } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Organization' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /organizations/{orgId}/members:
+    parameters: [{ $ref: '#/components/parameters/OrgIdPath' }]
+    get:
+      tags: [Organizations]
+      summary: Daftar anggota
+      responses:
+        '200':
+          description: OK
+          content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Member' } } } }
+    post:
+      tags: [Organizations]
+      summary: Undang anggota
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, role]
+              properties:
+                email: { type: string, format: email }
+                role: { $ref: '#/components/schemas/Role' }
+      responses:
+        '201': { description: Undangan terkirim, content: { application/json: { schema: { $ref: '#/components/schemas/Member' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  # ─────────────────────── Questionnaire ───────────────────────
+  /questionnaires/active:
+    get:
+      tags: [Questionnaire]
+      summary: Ambil kuesioner aktif (dimensi, pertanyaan, opsi, bobot)
+      parameters:
+        - { name: type, in: query, schema: { $ref: '#/components/schemas/AssessmentType' } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Questionnaire' } } } }
+
+  # ─────────────────────── Assessments ───────────────────────
+  /assessments:
+    get:
+      tags: [Assessments]
+      summary: Daftar assessment organisasi aktif
+      parameters:
+        - { $ref: '#/components/parameters/OrgIdHeader' }
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/AssessmentStatus' } }
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/PageSize' }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/AssessmentPage' } } } }
+    post:
+      tags: [Assessments]
+      summary: Mulai assessment baru
+      parameters: [{ $ref: '#/components/parameters/OrgIdHeader' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type]
+              properties:
+                type: { $ref: '#/components/schemas/AssessmentType' }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Assessment' } } } }
+        '409':
+          description: Sudah ada assessment IN_PROGRESS dengan tipe sama
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+
+  /assessments/{assessmentId}:
+    parameters: [{ $ref: '#/components/parameters/AssessmentIdPath' }, { $ref: '#/components/parameters/OrgIdHeader' }]
+    get:
+      tags: [Assessments]
+      summary: Detail assessment beserta jawaban tersimpan
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/AssessmentDetail' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Assessments]
+      summary: Hapus draft (hanya IN_PROGRESS)
+      responses:
+        '204': { description: No Content }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /assessments/{assessmentId}/next:
+    parameters: [{ $ref: '#/components/parameters/AssessmentIdPath' }, { $ref: '#/components/parameters/OrgIdHeader' }]
+    get:
+      tags: [Assessments]
+      summary: Ambil seksi berikutnya (pertanyaan yang visible) beserta progres
+      parameters:
+        - { name: section, in: query, description: Ambil seksi tertentu, schema: { type: string, examples: [DAT] } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/SectionPayload' } } } }
+
+  /assessments/{assessmentId}/answers:
+    parameters: [{ $ref: '#/components/parameters/AssessmentIdPath' }, { $ref: '#/components/parameters/OrgIdHeader' }]
+    patch:
+      tags: [Assessments]
+      summary: Simpan batch jawaban (autosave, idempoten per question_code)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [answers]
+              properties:
+                client_revision: { type: integer, minimum: 0 }
+                answers:
+                  type: array
+                  minItems: 1
+                  maxItems: 50
+                  items: { $ref: '#/components/schemas/AnswerInput' }
+            examples:
+              batch:
+                value:
+                  client_revision: 12
+                  answers:
+                    - { question_code: DAT-01, value: { choice: opt_75 } }
+                    - { question_code: DAT-07, value: { choices: [sales_tx, customer, inventory] } }
+                    - { question_code: STR-06, value: { scale: 4 } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/SaveResult' } } } }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+
+  /assessments/{assessmentId}/submit:
+    parameters: [{ $ref: '#/components/parameters/AssessmentIdPath' }, { $ref: '#/components/parameters/OrgIdHeader' }]
+    post:
+      tags: [Assessments]
+      summary: Submit dan jalankan skoring
+      responses:
+        '200': { description: Selesai diskor, content: { application/json: { schema: { $ref: '#/components/schemas/ScoreResult' } } } }
+        '422':
+          description: Ada pertanyaan wajib yang belum dijawab
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              examples:
+                incomplete:
+                  value:
+                    error:
+                      code: INCOMPLETE
+                      message: Masih ada 2 pertanyaan wajib yang belum dijawab
+                      details: { missing: [DAT-03, GOV-02] }
+                      trace_id: 0f1c2d3e
+
+  # ───────────────────────── Results ─────────────────────────
+  /assessments/{assessmentId}/result:
+    parameters: [{ $ref: '#/components/parameters/AssessmentIdPath' }, { $ref: '#/components/parameters/OrgIdHeader' }]
+    get:
+      tags: [Results]
+      summary: Hasil skoring lengkap
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/ScoreResult' } } } }
+        '402': { $ref: '#/components/responses/PaymentRequired' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /assessments/{assessmentId}/recommendations:
+    parameters: [{ $ref: '#/components/parameters/AssessmentIdPath' }, { $ref: '#/components/parameters/OrgIdHeader' }]
+    get:
+      tags: [Results]
+      summary: Rekomendasi berprioritas dan roadmap
+      responses:
+        '200':
+          description: OK
+          content: { application/json: { schema: { $ref: '#/components/schemas/RecommendationBundle' } } }
+
+  /organizations/{orgId}/trend:
+    parameters: [{ $ref: '#/components/parameters/OrgIdPath' }]
+    get:
+      tags: [Results]
+      summary: Tren skor antar assessment
+      responses:
+        '200':
+          description: OK
+          content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/TrendPoint' } } } }
+
+  # ───────────────────────── Reports ─────────────────────────
+  /assessments/{assessmentId}/report/pdf:
+    parameters: [{ $ref: '#/components/parameters/AssessmentIdPath' }, { $ref: '#/components/parameters/OrgIdHeader' }]
+    post:
+      tags: [Reports]
+      summary: Minta pembuatan PDF (asinkron)
+      responses:
+        '202': { description: Antrean dibuat, content: { application/json: { schema: { $ref: '#/components/schemas/ReportJob' } } } }
+        '402': { $ref: '#/components/responses/PaymentRequired' }
+
+  /reports/jobs/{jobId}:
+    parameters: [{ name: jobId, in: path, required: true, schema: { type: string, format: uuid } }]
+    get:
+      tags: [Reports]
+      summary: Status job PDF
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/ReportJob' } } } }
+
+  /assessments/{assessmentId}/share-links:
+    parameters: [{ $ref: '#/components/parameters/AssessmentIdPath' }, { $ref: '#/components/parameters/OrgIdHeader' }]
+    post:
+      tags: [Reports]
+      summary: Buat tautan berbagi read-only
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                expires_in_days: { type: integer, enum: [7, 30, 90], default: 30 }
+                anonymize: { type: boolean, default: false }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/ShareLink' } } } }
+
+  /share-links/{token}:
+    parameters: [{ name: token, in: path, required: true, schema: { type: string } }]
+    delete:
+      tags: [Reports]
+      summary: Cabut tautan berbagi
+      responses: { '204': { description: No Content } }
+
+  # ───────────────────────── Public ─────────────────────────
+  /public/quick-check:
+    post:
+      tags: [Public]
+      summary: Quick Check tanpa login, langsung kembalikan skor ringkas
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [answers]
+              properties:
+                email: { type: string, format: email }
+                answers: { type: array, items: { $ref: '#/components/schemas/AnswerInput' } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/QuickCheckResult' } } } }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /public/shared/{token}:
+    get:
+      tags: [Public]
+      summary: Lihat laporan yang dibagikan
+      security: []
+      parameters: [{ name: token, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/SharedReport' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ─────────────────────── Benchmark ───────────────────────
+  /benchmark:
+    get:
+      tags: [Benchmark]
+      summary: Statistik pembanding industri
+      parameters:
+        - { name: industry, in: query, required: true, schema: { $ref: '#/components/schemas/Industry' } }
+        - { name: employee_band, in: query, schema: { $ref: '#/components/schemas/EmployeeBand' } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Benchmark' } } } }
+
+  # ─────────────────────── Billing ───────────────────────
+  /billing/checkout:
+    post:
+      tags: [Billing]
+      summary: Buat sesi pembayaran (Midtrans Snap)
+      parameters: [{ $ref: '#/components/parameters/OrgIdHeader' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [plan]
+              properties:
+                plan: { type: string, enum: [PRO_SINGLE, TEAM_ANNUAL] }
+                assessment_id: { type: string, format: uuid }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  order_id: { type: string }
+                  snap_token: { type: string }
+                  redirect_url: { type: string, format: uri }
+
+  /billing/webhook:
+    post:
+      tags: [Billing]
+      summary: Webhook status pembayaran (idempoten, signature diverifikasi)
+      security: []
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, additionalProperties: true } } }
+      responses:
+        '204': { description: Diterima }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /billing/entitlements:
+    get:
+      tags: [Billing]
+      summary: Hak akses organisasi saat ini
+      parameters: [{ $ref: '#/components/parameters/OrgIdHeader' }]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Entitlement' } } } }
+
+  # ───────────────────────── Admin ─────────────────────────
+  /admin/questionnaires:
+    get:
+      tags: [Admin]
+      summary: Daftar versi kuesioner
+      responses:
+        '200':
+          description: OK
+          content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/QuestionnaireVersion' } } } }
+    post:
+      tags: [Admin]
+      summary: Buat versi DRAFT baru (salin dari versi lain)
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, properties: { clone_from: { type: string } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/QuestionnaireVersion' } } } }
+
+  /admin/questionnaires/{versionId}/publish:
+    parameters: [{ name: versionId, in: path, required: true, schema: { type: string } }]
+    post:
+      tags: [Admin]
+      summary: Terbitkan versi (menjadi immutable)
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/QuestionnaireVersion' } } } }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /admin/questions:
+    post:
+      tags: [Admin]
+      summary: Tambah pertanyaan ke versi DRAFT
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/QuestionInput' } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Question' } } } }
+
+  /admin/questions/{questionId}:
+    parameters: [{ name: questionId, in: path, required: true, schema: { type: string } }]
+    patch:
+      tags: [Admin]
+      summary: Ubah pertanyaan pada versi DRAFT
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/QuestionInput' } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Question' } } } }
+        '409': { $ref: '#/components/responses/Conflict' }
+    delete:
+      tags: [Admin]
+      summary: Hapus pertanyaan pada versi DRAFT
+      responses: { '204': { description: No Content } }
+
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+
+  parameters:
+    OrgIdHeader:
+      name: X-Org-Id
+      in: header
+      required: true
+      description: Organisasi aktif untuk permintaan ini
+      schema: { type: string, format: uuid }
+    OrgIdPath:
+      name: orgId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    AssessmentIdPath:
+      name: assessmentId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    PageSize:
+      name: page_size
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+
+  responses:
+    Unauthenticated:
+      description: Tidak terautentikasi
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+    Forbidden:
+      description: Tidak berwenang
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+    NotFound:
+      description: Tidak ditemukan
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+    Conflict:
+      description: Konflik status
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+    UnprocessableEntity:
+      description: Validasi gagal
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+    RateLimited:
+      description: Terlalu banyak permintaan
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+    PaymentRequired:
+      description: Perlu paket berbayar
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+
+  schemas:
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum: [UNAUTHENTICATED, FORBIDDEN, NOT_FOUND, CONFLICT, INCOMPLETE,
+                     INVALID_ANSWER_TYPE, QUESTION_NOT_VISIBLE, RATE_LIMITED,
+                     PAYMENT_REQUIRED, INTERNAL]
+            message: { type: string }
+            details: { type: object, additionalProperties: true }
+            trace_id: { type: string }
+
+    OtpChallenge:
+      type: object
+      properties:
+        challenge_id: { type: string, format: uuid }
+        expires_at: { type: string, format: date-time }
+
+    TokenPair:
+      type: object
+      required: [access_token, refresh_token, expires_in]
+      properties:
+        access_token: { type: string }
+        refresh_token: { type: string }
+        expires_in: { type: integer, description: detik, examples: [900] }
+
+    Role:
+      type: string
+      enum: [owner, admin, member, viewer]
+
+    Me:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        name: { type: string }
+        memberships:
+          type: array
+          items:
+            type: object
+            properties:
+              organization: { $ref: '#/components/schemas/Organization' }
+              role: { $ref: '#/components/schemas/Role' }
+
+    Industry:
+      type: string
+      enum: [manufacturing, retail_ecommerce, fnb, logistics, financial_services,
+             healthcare, education, professional_services, construction_property,
+             agriculture, media_creative, technology, government_public, other]
+
+    EmployeeBand:
+      type: string
+      enum: ['1_9', '10_49', '50_99', '100_499', '500_999', '1000_plus']
+
+    RevenueBand:
+      type: string
+      enum: [under_2_5b, 2_5b_15b, 15b_50b, 50b_250b, 250b_plus, undisclosed]
+
+    OrganizationInput:
+      type: object
+      required: [name, industry, employee_band]
+      properties:
+        name: { type: string, minLength: 2, maxLength: 120 }
+        industry: { $ref: '#/components/schemas/Industry' }
+        employee_band: { $ref: '#/components/schemas/EmployeeBand' }
+        revenue_band: { $ref: '#/components/schemas/RevenueBand' }
+        country: { type: string, default: ID }
+        province: { type: string }
+
+    Organization:
+      allOf:
+        - $ref: '#/components/schemas/OrganizationInput'
+        - type: object
+          properties:
+            id: { type: string, format: uuid }
+            created_at: { type: string, format: date-time }
+
+    Member:
+      type: object
+      properties:
+        user_id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        name: { type: string }
+        role: { $ref: '#/components/schemas/Role' }
+        status: { type: string, enum: [invited, active, suspended] }
+
+    QuestionType:
+      type: string
+      enum: [single_choice, multi_choice, scale_1_5, boolean, number, text]
+
+    DimensionCode:
+      type: string
+      enum: [STR, DAT, TEC, PPL, PRC, GOV, FIN]
+
+    QuestionOption:
+      type: object
+      required: [code, label, score]
+      properties:
+        code: { type: string, examples: [opt_75] }
+        label: { type: string }
+        score: { type: number, minimum: 0, maximum: 100 }
+        order: { type: integer }
+
+    VisibilityRule:
+      type: object
+      description: DSL murni; operator eq, neq, in, nin, gt, gte, lt, lte, exists
+      additionalProperties: true
+      examples:
+        - all:
+            - { question: ORG-02, op: in, value: ['100_499', '500_999', '1000_plus'] }
+
+    Question:
+      type: object
+      required: [id, code, dimension_code, type, prompt, weight, required]
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string, examples: [DAT-01] }
+        dimension_code: { $ref: '#/components/schemas/DimensionCode' }
+        type: { $ref: '#/components/schemas/QuestionType' }
+        prompt: { type: string }
+        help_text: { type: string }
+        weight: { type: number, minimum: 0 }
+        required: { type: boolean }
+        order: { type: integer }
+        in_quick_check: { type: boolean }
+        min_select: { type: integer }
+        max_select: { type: integer }
+        min: { type: number }
+        max: { type: number }
+        options: { type: array, items: { $ref: '#/components/schemas/QuestionOption' } }
+        visibility_rule: { $ref: '#/components/schemas/VisibilityRule' }
+
+    QuestionInput:
+      allOf:
+        - $ref: '#/components/schemas/Question'
+        - type: object
+          required: [questionnaire_version_id]
+          properties:
+            questionnaire_version_id: { type: string }
+
+    Dimension:
+      type: object
+      properties:
+        code: { $ref: '#/components/schemas/DimensionCode' }
+        name: { type: string }
+        description: { type: string }
+        weight: { type: number, minimum: 0, maximum: 1 }
+
+    Questionnaire:
+      type: object
+      properties:
+        version: { type: string, examples: ['1.0.0'] }
+        rubric_version: { type: string, examples: ['1.0.0'] }
+        dimensions: { type: array, items: { $ref: '#/components/schemas/Dimension' } }
+        questions: { type: array, items: { $ref: '#/components/schemas/Question' } }
+
+    QuestionnaireVersion:
+      type: object
+      properties:
+        id: { type: string }
+        version: { type: string }
+        status: { type: string, enum: [DRAFT, PUBLISHED, ARCHIVED] }
+        published_at: { type: string, format: date-time }
+
+    AssessmentType: { type: string, enum: [QUICK, FULL] }
+    AssessmentStatus: { type: string, enum: [IN_PROGRESS, SUBMITTED, SCORED, ARCHIVED] }
+
+    Assessment:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        organization_id: { type: string, format: uuid }
+        type: { $ref: '#/components/schemas/AssessmentType' }
+        status: { $ref: '#/components/schemas/AssessmentStatus' }
+        questionnaire_version: { type: string }
+        rubric_version: { type: string }
+        started_at: { type: string, format: date-time }
+        submitted_at: { type: string, format: date-time, nullable: true }
+        progress: { $ref: '#/components/schemas/Progress' }
+
+    AssessmentDetail:
+      allOf:
+        - $ref: '#/components/schemas/Assessment'
+        - type: object
+          properties:
+            server_revision: { type: integer }
+            answers: { type: array, items: { $ref: '#/components/schemas/Answer' } }
+
+    AssessmentPage:
+      type: object
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/Assessment' } }
+        page: { type: integer }
+        page_size: { type: integer }
+        total: { type: integer }
+
+    Progress:
+      type: object
+      properties:
+        answered: { type: integer }
+        total_visible: { type: integer }
+        percent: { type: number, minimum: 0, maximum: 100 }
+        estimated_minutes_left: { type: integer }
+
+    AnswerValue:
+      description: Bentuk nilai mengikuti tipe pertanyaan
+      oneOf:
+        - { type: object, required: [choice], properties: { choice: { type: string } } }
+        - { type: object, required: [choices], properties: { choices: { type: array, items: { type: string } } } }
+        - { type: object, required: [scale], properties: { scale: { type: integer, minimum: 1, maximum: 5 } } }
+        - { type: object, required: [bool], properties: { bool: { type: boolean } } }
+        - { type: object, required: [number], properties: { number: { type: number } } }
+        - { type: object, required: [text], properties: { text: { type: string, maxLength: 1000 } } }
+
+    AnswerInput:
+      type: object
+      required: [question_code, value]
+      properties:
+        question_code: { type: string }
+        value: { $ref: '#/components/schemas/AnswerValue' }
+        evidence_url: { type: string, format: uri }
+
+    Answer:
+      allOf:
+        - $ref: '#/components/schemas/AnswerInput'
+        - type: object
+          properties:
+            answered_at: { type: string, format: date-time }
+
+    SaveResult:
+      type: object
+      properties:
+        saved: { type: integer }
+        server_revision: { type: integer }
+        progress: { $ref: '#/components/schemas/Progress' }
+        newly_visible: { type: array, items: { type: string }, description: question_code yang baru muncul akibat branching }
+        newly_hidden: { type: array, items: { type: string } }
+
+    SectionPayload:
+      type: object
+      properties:
+        dimension: { $ref: '#/components/schemas/Dimension' }
+        section_index: { type: integer }
+        section_total: { type: integer }
+        questions: { type: array, items: { $ref: '#/components/schemas/Question' } }
+        answers: { type: array, items: { $ref: '#/components/schemas/Answer' } }
+        progress: { $ref: '#/components/schemas/Progress' }
+
+    MaturityLevel: { type: integer, minimum: 1, maximum: 5 }
+    Verdict: { type: string, enum: [READY, CONDITIONALLY_READY, NOT_READY] }
+
+    DimensionScore:
+      type: object
+      properties:
+        dimension_code: { $ref: '#/components/schemas/DimensionCode' }
+        name: { type: string }
+        score: { type: number, minimum: 0, maximum: 100 }
+        level: { $ref: '#/components/schemas/MaturityLevel' }
+        weight: { type: number }
+        benchmark_percentile: { type: number, nullable: true }
+
+    Gate:
+      type: object
+      properties:
+        code: { type: string, enum: [DATA_FOUNDATION_GATE, GOVERNANCE_GATE] }
+        triggered: { type: boolean }
+        message: { type: string }
+
+    ScoreResult:
+      type: object
+      required: [assessment_id, total_score, level, verdict, dimensions]
+      properties:
+        assessment_id: { type: string, format: uuid }
+        total_score: { type: number, minimum: 0, maximum: 100, examples: [58.4] }
+        level: { $ref: '#/components/schemas/MaturityLevel' }
+        verdict: { $ref: '#/components/schemas/Verdict' }
+        confidence: { type: string, enum: [LOW, MEDIUM, HIGH] }
+        gates: { type: array, items: { $ref: '#/components/schemas/Gate' } }
+        dimensions: { type: array, items: { $ref: '#/components/schemas/DimensionScore' } }
+        benchmark_available: { type: boolean }
+        rubric_version: { type: string }
+        computed_at: { type: string, format: date-time }
+        summary: { type: string, description: Ringkasan naratif 2-3 kalimat }
+
+    Recommendation:
+      type: object
+      properties:
+        code: { type: string, examples: [REC-DAT-002] }
+        title: { type: string }
+        body: { type: string }
+        dimension_code: { $ref: '#/components/schemas/DimensionCode' }
+        impact: { type: integer, minimum: 1, maximum: 5 }
+        effort: { type: integer, minimum: 1, maximum: 5 }
+        priority_score: { type: number }
+        horizon: { type: string, enum: ['0_3M', '3_6M', '6_12M'] }
+        owner_role: { type: string, examples: [Head of IT] }
+        cost_band: { type: string, enum: [under_10jt, 10_30jt, 30_100jt, 100_500jt, above_500jt] }
+
+    RecommendationBundle:
+      type: object
+      properties:
+        items: { type: array, minItems: 3, items: { $ref: '#/components/schemas/Recommendation' } }
+        roadmap:
+          type: object
+          properties:
+            '0_3M': { type: array, items: { type: string } }
+            '3_6M': { type: array, items: { type: string } }
+            '6_12M': { type: array, items: { type: string } }
+
+    TrendPoint:
+      type: object
+      properties:
+        assessment_id: { type: string, format: uuid }
+        submitted_at: { type: string, format: date-time }
+        total_score: { type: number }
+        dimensions:
+          type: object
+          additionalProperties: { type: number }
+
+    Benchmark:
+      type: object
+      properties:
+        industry: { $ref: '#/components/schemas/Industry' }
+        employee_band:
+          oneOf: [{ $ref: '#/components/schemas/EmployeeBand' }, { type: 'null' }]
+        sample_size: { type: integer }
+        available: { type: boolean, description: false bila sample_size < 30 }
+        total: { type: object, properties: { p25: { type: number }, p50: { type: number }, p75: { type: number } } }
+        dimensions:
+          type: array
+          items:
+            type: object
+            properties:
+              dimension_code: { $ref: '#/components/schemas/DimensionCode' }
+              p25: { type: number }
+              p50: { type: number }
+              p75: { type: number }
+
+    QuickCheckResult:
+      type: object
+      properties:
+        total_score: { type: number }
+        level: { $ref: '#/components/schemas/MaturityLevel' }
+        verdict: { $ref: '#/components/schemas/Verdict' }
+        confidence: { type: string, enum: [LOW] }
+        teaser: { type: string, description: Satu kalimat temuan utama }
+        upgrade_cta: { type: string }
+
+    ReportJob:
+      type: object
+      properties:
+        job_id: { type: string, format: uuid }
+        status: { type: string, enum: [QUEUED, PROCESSING, DONE, FAILED] }
+        download_url: { type: string, format: uri, nullable: true }
+        expires_at: { type: string, format: date-time, nullable: true }
+
+    ShareLink:
+      type: object
+      properties:
+        token: { type: string }
+        url: { type: string, format: uri }
+        expires_at: { type: string, format: date-time }
+        anonymize: { type: boolean }
+
+    SharedReport:
+      type: object
+      properties:
+        organization_name: { type: string, nullable: true, description: null bila anonymize }
+        result: { $ref: '#/components/schemas/ScoreResult' }
+        recommendations: { $ref: '#/components/schemas/RecommendationBundle' }
+
+    Entitlement:
+      type: object
+      properties:
+        organization_id: { type: string, format: uuid }
+        plan: { type: string, enum: [FREE, PRO_SINGLE, TEAM_ANNUAL, PARTNER] }
+        status: { type: string, enum: [ACTIVE, EXPIRED, PENDING] }
+        valid_until: { type: string, format: date-time, nullable: true }
