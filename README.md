@@ -112,7 +112,7 @@ Perintah itu menyalakan API, form responden, dan dashboard auditor sekaligus,
 lalu mencetak semua tautan yang dibutuhkan.
 
 **Akun demo** — masuk di `http://localhost:3000/masuk` dengan
-`auditor@demo.id` / `auditorDemo123`.
+`admin@example.com` / `password123`.
 
 | Buka | Isinya |
 |---|---|

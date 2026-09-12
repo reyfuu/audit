@@ -19,8 +19,8 @@ const WEB_PORT = Number(process.env.PORT ?? 3000)
 const WEB_BASE = process.env.PUBLIC_BASE_URL ?? `http://localhost:${WEB_PORT}`
 
 /** Kata sandi demo; disebutkan terbuka karena memang untuk dicoba lokal. */
-const DEMO_EMAIL = 'auditor@demo.id'
-const DEMO_PASSWORD = 'auditorDemo123'
+const DEMO_EMAIL = 'admin@example.com'
+const DEMO_PASSWORD = 'password123'
 
 // Postgres bila DATABASE_URL ada, selain itu memori.
 const storage = createStorage()
@@ -53,7 +53,7 @@ async function ambilAtauBuatAuditor() {
     return ada
   }
   return repo.createAuditor({
-    email: DEMO_EMAIL, name: 'Dimas Auditor', role: 'auditor_admin',
+    email: DEMO_EMAIL, name: 'Admin Auditor', role: 'auditor_admin',
     password_hash: hashPassword(DEMO_PASSWORD),
   })
 }
