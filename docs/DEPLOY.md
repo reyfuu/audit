@@ -16,6 +16,8 @@ saya sendiri enam bulan lagi, dapat mengulang atau memperbaikinya tanpa menebak.
 | Basis data | PostgreSQL `siapai` |
 | Berkas rahasia | `/etc/siapai.env` (mode 600) |
 | Nginx | `/etc/nginx/sites-available/siapai-aipreneur` |
+| TLS | Let's Encrypt, diperbarui otomatis oleh `certbot.timer` |
+| Cloudflare | Proxied (awan oranye), mode SSL Full |
 
 API sengaja **tidak** diekspos ke internet. Web memanggilnya lewat handler
 in-process, sehingga port 20141 hanya ada supaya Elysia punya alamat internal.
@@ -74,17 +76,11 @@ kunci pengembangan yang diketahui umum lebih berbahaya daripada gagal menyala.
 
 ## TLS
 
-Sertifikat saat ini meminjam milik `prodpilot.aipreneur.co.id`, karena catatan
-DNS `audit.aipreneur.co.id` belum dibuat saat instalasi. Sampai itu dilakukan,
-peramban akan memperingatkan ketidakcocokan nama.
+Sertifikat Let's Encrypt untuk `audit.aipreneur.co.id` sudah terbit dan
+diperbarui otomatis oleh timer `certbot.timer` bawaan sistem. HTTP dialihkan
+ke HTTPS lewat blok yang ditambahkan certbot.
 
-**Langkah yang tersisa, satu kali saja:**
-
-1. Di Cloudflare (nameserver domain ini: `drew.ns` dan `eve.ns`), tambahkan
-   A record `audit` → `31.97.66.119`. Bila proxy diaktifkan (awan oranye),
-   matikan dulu selama penerbitan: verifikasi HTTP harus mencapai server ini
-   secara langsung.
-2. Jalankan:
+Bila suatu saat perlu menerbitkan ulang atau menambah nama baru:
 
 ```bash
 ssh aipreneur-vps
@@ -97,8 +93,24 @@ dengan instruksi konkret bila belum siap. Itu disengaja: `certbot` yang
 dijalankan terlalu cepat akan gagal sambil menghabiskan kuota percobaan
 Let's Encrypt, dan pesan galatnya tidak menyebut penyebab sebenarnya.
 
-Jalur verifikasi `/.well-known/acme-challenge/` sudah dikonfigurasi dan
-terbukti berfungsi, sehingga penerbitan tinggal menunggu DNS.
+### Proxy Cloudflare
+
+Domain ini **proxied** (awan oranye), berbeda dari `9router` dan `prodpilot`
+yang DNS only. Konsekuensinya:
+
+- Pengunjung melihat sertifikat Cloudflare, bukan Let's Encrypt milik server.
+  Itu normal dan bukan tanda kesalahan; sertifikat server tetap dipakai pada
+  sambungan Cloudflare ke origin.
+- Mode SSL/TLS di Cloudflare **harus** Full atau Full (strict), tidak boleh
+  Flexible. Dengan Flexible, Cloudflare menghubungi origin lewat HTTP polos
+  sementara pengunjung melihat HTTPS, dan cookie sesi yang bertanda `Secure`
+  tidak akan pernah terkirim balik sehingga login gagal tanpa penjelasan.
+  Terverifikasi: Cloudflare menghubungi origin di port 443, dan login lewat
+  domain publik berhasil.
+- IP asli server tersembunyi, dan lalu lintas mendapat perlindungan DDoS.
+
+Untuk menerbitkan ulang sertifikat lewat verifikasi HTTP, proxy perlu
+dimatikan sementara agar Let's Encrypt dapat mencapai server secara langsung.
 
 ## Memeriksa keadaan
 

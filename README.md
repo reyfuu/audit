@@ -30,6 +30,13 @@ Owner    ──pindai QR / klik tautan──────┘
 **Backend: Elysia di atas Bun** (TypeBox schema-first, Eden untuk tipe end-to-end), PostgreSQL 16 + Drizzle ORM, Redis/BullMQ untuk job PDF & email, `qrcode` untuk QR server-side.
 **Frontend:** Next.js 15 + Tailwind + shadcn/ui. Rincian di [docs/TRD.md](docs/TRD.md) §2 dan ADR-007/008 di [DESIGN.md](DESIGN.md).
 
+## Demo Langsung
+**<https://audit.aipreneur.co.id>** — masuk dengan `admin@example.com` / `password123`.
+
+Berjalan di VPS dengan PostgreSQL, tinjauan AI aktif, dan lima perusahaan
+contoh pada kondisi berbeda. Rincian instalasinya di
+[docs/DEPLOY.md](docs/DEPLOY.md).
+
 ## Status Implementasi
 Kontrak API sengaja ditulis lebih dulu dan lebih luas daripada implementasinya.
 Tiap path diberi `x-status`, dan `tools/traceability.py` memverifikasi penandaan
