@@ -16,7 +16,7 @@ saya sendiri enam bulan lagi, dapat mengulang atau memperbaikinya tanpa menebak.
 | Basis data | PostgreSQL `siapai` |
 | Berkas rahasia | `/etc/siapai.env` (mode 600) |
 | Nginx | `/etc/nginx/sites-available/siapai-aipreneur` |
-| TLS | Let's Encrypt, diperbarui otomatis oleh `certbot.timer` |
+| TLS | Let's Encrypt, perpanjangan otomatis terverifikasi lewat dry run |
 | Cloudflare | Proxied (awan oranye), mode SSL Full |
 
 API sengaja **tidak** diekspos ke internet. Web memanggilnya lewat handler
@@ -109,8 +109,28 @@ yang DNS only. Konsekuensinya:
   domain publik berhasil.
 - IP asli server tersembunyi, dan lalu lintas mendapat perlindungan DDoS.
 
-Untuk menerbitkan ulang sertifikat lewat verifikasi HTTP, proxy perlu
-dimatikan sementara agar Let's Encrypt dapat mencapai server secara langsung.
+Perpanjangan otomatis **tetap bekerja dengan proxy menyala**: Cloudflare
+sengaja meneruskan permintaan `/.well-known/acme-challenge/` ke origin.
+Terverifikasi lewat `certbot renew --dry-run` yang berhasil dalam keadaan
+proxied. Jadi tidak ada tindakan berkala yang perlu diingat.
+
+Yang tetap perlu proxy dimatikan hanyalah penerbitan **pertama** untuk nama
+baru, karena saat itu certbot juga menulis ulang konfigurasi nginx dan lebih
+mudah diperiksa tanpa lapisan di depannya.
+
+## Ketahanan dan paparan
+
+Diverifikasi, bukan diasumsikan:
+
+- **Port aplikasi tertutup dari internet.** 20140, 20141, dan 5432 tidak dapat
+  dijangkau dari luar; hanya nginx yang menghadap publik.
+- **Pulih sendiri setelah database restart.** PostgreSQL dimatikan lalu
+  dihidupkan; login dan dashboard kembali normal tanpa campur tangan, karena
+  driver membuat koneksi baru sesuai kebutuhan.
+- **Menyala setelah reboot.** `siapai`, `postgresql`, dan `nginx` semuanya
+  `enabled`, dan unit siapai menunggu `postgresql.service` lebih dulu.
+- **Rahasia tidak pernah masuk repo.** `/etc/siapai.env` berada di luar
+  direktori kerja, dan riwayat git bersih dari kunci maupun kata sandi.
 
 ## Memeriksa keadaan
 
