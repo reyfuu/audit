@@ -8,18 +8,20 @@
 ### A1. Keputusan Arsitektur (ADR ringkas)
 | ADR | Keputusan | Alternatif ditolak | Alasan |
 |---|---|---|---|
-| ADR-001 | Modular monolith NestJS | Microservices | Tim kecil, domain belum stabil |
+| ADR-001 | Modular monolith **Elysia di atas Bun** | Microservices | Tim kecil, domain belum stabil |
 | ADR-002 | Skoring sebagai paket murni terisolasi | Logika di service/DB | Determinisme & testability (BA2) |
 | ADR-003 | Konten kuesioner di DB, berversi | Hardcode di kode | Konten berubah lebih cepat dari kode |
 | ADR-004 | Snapshot hasil skoring (JSONB) | Hitung ulang saat render | Laporan historis harus stabil (PA4) |
 | ADR-005 | PDF via render halaman hasil (Playwright) | Template PDF terpisah | Cegah drift HTML vs PDF (PA3) |
 | ADR-006 | OpenAPI sebagai sumber kebenaran | Tipe manual | Sinkron FE/BE, uji kontrak otomatis |
+| ADR-007 | **Elysia + TypeBox menggantikan NestJS** | NestJS, Fastify, Hono | Skema validasi runtime sekaligus menghasilkan OpenAPI (menguatkan ADR-006), throughput lebih tinggi untuk endpoint autosave yang paling sering dipanggil, dan tipe end-to-end ke frontend via Eden tanpa codegen. Konsekuensi: ekosistem lebih muda, pustaka pihak ketiga yang belum matang di Bun diisolasi di balik adapter. |
+| ADR-008 | Drizzle ORM menggantikan Prisma | Prisma, SQL mentah | Berjalan native di Bun tanpa engine biner, migrasi SQL eksplisit yang cocok dengan strategi expand-and-contract |
 
 ### A2. Mesin Skoring — alur
 ```mermaid
 sequenceDiagram
   participant U as User
-  participant API as Assessment API
+  participant API as Assessment API (Elysia)
   participant S as Scoring Engine
   participant DB as Postgres
   U->>API: POST /assessments/{id}/submit

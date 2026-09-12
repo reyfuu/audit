@@ -15,6 +15,17 @@ Fase dokumentasi selesai. Implementasi belum dimulai (menunggu persetujuan dokum
 | [DESIGN.md](DESIGN.md) | ADR, alur sistem, design token, peta layar, wireframe, komponen, aksesibilitas |
 | [docs/QUESTION_BANK.md](docs/QUESTION_BANK.md) | Isi form: ~45 pertanyaan berskor + Quick Check + aturan rekomendasi |
 | [contracts/openapi.yaml](contracts/openapi.yaml) | API contract OpenAPI 3.1 (32 path, 45 schema) |
+| [tools/validate_docs.py](tools/validate_docs.py) | Validator konsistensi dokumen & kontrak (66 check) |
+
+## Tumpukan Teknologi
+**Backend: Elysia di atas Bun** (TypeBox schema-first, Eden untuk tipe end-to-end), PostgreSQL 16 + Drizzle ORM, Redis/BullMQ untuk job PDF & email.
+**Frontend:** Next.js 15 + Tailwind + shadcn/ui. Rincian dan alasan di [docs/TRD.md](docs/TRD.md) §2 dan ADR-007/008 di [DESIGN.md](DESIGN.md).
+
+## Validasi
+```bash
+python3 tools/validate_docs.py    # konsistensi lintas dokumen
+```
+Memeriksa keselarasan enum, bobot dimensi, kode error, endpoint yang dijanjikan FRD, aturan auth, dan konsistensi stack.
 
 ## Model Kesiapan
 | Dimensi | Bobot |
@@ -31,6 +42,15 @@ Verdict: `READY ≥70` · `CONDITIONALLY_READY 50–69` · `NOT_READY <50`, deng
 
 ## Langkah Berikutnya
 1. Review & persetujuan dokumen.
-2. Scaffold monorepo (`apps/web`, `apps/api`, `packages/scoring`).
+2. Scaffold monorepo Bun (`apps/web`, `apps/api` Elysia, `packages/scoring`).
 3. Implementasi mesin skoring + uji determinisme lebih dulu.
 4. Form assessment dan halaman hasil.
+
+## Bukti Verifikasi
+| Check | Perintah | Hasil |
+|---|---|---|
+| Konsistensi dokumen & kontrak | `python3 tools/validate_docs.py` | 69/69 lulus |
+| OpenAPI 3.1 sah | `openapi-spec-validator contracts/openapi.yaml` | VALID |
+| Pola arsitektur Elysia jalan | `cd tools/spike-elysia && bun test` | 12/12 lulus |
+
+Validator terbukti dapat gagal (mutation test): menghapus endpoint submit, mengubah bobot dimensi, menambah kode error fiktif, dan mengembalikan sebutan NestJS semuanya terdeteksi sebagai FAIL.
