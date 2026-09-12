@@ -114,3 +114,78 @@ legend { font-size:18px; line-height:1.4; font-weight:600; margin-bottom:4px; pa
   * { transition:none !important; animation:none !important; }
 }
 `
+
+/**
+ * Gaya khusus dashboard auditor.
+ *
+ * Navigasi berbentuk sidebar tetap: auditor bekerja lama di satu layar lebar dan
+ * berpindah antar daftar sepanjang hari, sehingga tujuan navigasi sebaiknya
+ * selalu terlihat. Di layar sempit sidebar menjadi baris atas yang dapat
+ * digulir, bukan menu tersembunyi, agar tidak ada aksi yang hilang.
+ */
+export const APP_STYLES = `
+.shell { display:flex; min-height:100vh; }
+.side {
+  width:240px; flex:none; background:var(--surface);
+  border-right:1px solid var(--border); padding:20px 12px;
+  display:flex; flex-direction:column; gap:4px;
+  position:sticky; top:0; height:100vh; overflow:auto;
+}
+.side .logo { font-weight:700; color:var(--brand-900); font-size:18px;
+  padding:4px 12px 16px; letter-spacing:-.01em; }
+.side a.nav {
+  display:flex; align-items:center; gap:10px; min-height:44px; padding:0 12px;
+  border-radius:var(--radius); color:var(--text); text-decoration:none; font-size:15px;
+}
+.side a.nav:hover { background:var(--bg); }
+.side a.nav[aria-current="page"] { background:#EDF4FC; color:var(--brand-600); font-weight:600; }
+.side .nav .ic { width:20px; text-align:center; flex:none; }
+.side .sep { margin-top:auto; padding-top:16px; border-top:1px solid var(--border); }
+.side .who { padding:8px 12px; font-size:13px; color:var(--muted); word-break:break-all; }
+
+.main { flex:1; min-width:0; }
+.main .inner { max-width:1040px; padding:24px 24px 64px; margin:0; }
+.page-head { display:flex; align-items:flex-start; gap:16px; flex-wrap:wrap; margin-bottom:20px; }
+.page-head h1 { margin:0; font-size:26px; }
+.page-head .spacer { margin-left:auto; }
+
+.stats { display:grid; gap:12px; grid-template-columns:repeat(2,1fr); margin-bottom:20px; }
+@media (min-width:900px) { .stats { grid-template-columns:repeat(4,1fr); } }
+.stat { background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--radius); padding:14px 16px; }
+.stat b { display:block; font-size:26px; line-height:1.2; font-variant-numeric:tabular-nums; }
+.stat span { font-size:13px; color:var(--muted); }
+
+.toolbar { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px; align-items:center; }
+.field { min-height:44px; font-size:15px; border:1px solid var(--border);
+  border-radius:var(--radius); padding:0 12px; background:var(--surface); color:var(--text); }
+.field:focus-visible { outline:2px solid var(--brand-600); outline-offset:1px; }
+label.lbl { display:block; font-size:13px; color:var(--muted); margin-bottom:4px; }
+.btn-sm { min-height:44px; padding:0 16px; font-size:14px; flex:none; width:auto; }
+
+.tbl tbody tr:hover { background:var(--bg); }
+.tbl td a { color:var(--brand-600); }
+.sev { display:inline-block; font-size:12px; font-weight:600; padding:2px 8px;
+  border-radius:999px; border:1px solid currentColor; }
+.sev-high { color:var(--danger); } .sev-medium { color:var(--warn); } .sev-low { color:var(--muted); }
+.flag { border-top:1px solid var(--border); padding:14px 0; }
+.flag:first-of-type { border-top:0; }
+.flag .q { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px; color:var(--muted); }
+
+.login-wrap { max-width:420px; margin:0 auto; padding:48px 20px; }
+.login-wrap .card { padding:28px 24px; }
+.login-wrap input { width:100%; margin-bottom:14px; }
+
+@media (max-width:860px) {
+  .shell { display:block; }
+  .side {
+    width:auto; height:auto; position:static; flex-direction:row; overflow-x:auto;
+    border-right:0; border-bottom:1px solid var(--border); padding:10px 12px; align-items:center;
+  }
+  .side .logo { padding:0 12px 0 4px; font-size:16px; }
+  .side .sep { margin:0 0 0 auto; padding:0 0 0 12px; border-top:0; border-left:1px solid var(--border); }
+  .side .who { display:none; }
+  .side a.nav { white-space:nowrap; }
+  .main .inner { padding:16px 16px 48px; }
+}
+`

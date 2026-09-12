@@ -14,7 +14,7 @@
     "verify": "bun run typecheck && bun run validate:docs && bun run trace && bun test packages apps && bun run verify:readme",
     "test:api": "bun test apps/api",
     "dev": "bun tools/dev-server.ts",
-    "check:visual": "bun tools/visual-check.ts",
+    "check:visual": "bun apps/web/checks/visual.ts",
     "verify:full": "bun run verify && bun run check:visual",
     "trace": "python3 tools/traceability.py",
     "demo:lokal": "bun apps/web/demo/lokal.ts",
@@ -23,7 +23,8 @@
     "db:setup": "createdb siapai_dev 2>/dev/null; DATABASE_URL=postgres://localhost:5432/siapai_dev drizzle-kit migrate",
     "test:pg": "TEST_DATABASE_URL=postgres://localhost:5432/siapai_test bun test apps/api",
     "verify:pg": "bun run verify && bun run test:pg",
-    "verify:readme": "python3 tools/verify_readme.py"
+    "verify:readme": "python3 tools/verify_readme.py",
+    "verify:all": "bun run verify && bun run test:pg && bun run check:visual && cd tools/spike-elysia && bun test"
   },
   "devDependencies": {
     "@types/pngjs": "^6.0.5",

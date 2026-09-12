@@ -1,19 +1,20 @@
 /**
- * Dashboard auditor sederhana untuk demo lokal (FR-29).
+ * Dashboard auditor (FR-29).
  *
- * Sengaja server-rendered dan seragam dengan form responden, sehingga auditor
- * dapat menerbitkan undangan, melihat QR, dan memantau status tanpa alat lain.
+ * Navigasi berbentuk sidebar dengan halaman terpisah untuk ringkasan, undangan,
+ * perusahaan, dan tinjauan AI. Dipecah begini karena jumlah perusahaan bisa
+ * ratusan: satu halaman panjang berisi semua formulir menjadi tidak terpakai
+ * begitu daftarnya bertambah.
+ *
+ * Tetap server-rendered dengan form HTML biasa, seragam dengan form responden.
  */
 import { Elysia, t } from 'elysia'
-import { STYLES } from './styles'
-
-const esc = (s: unknown): string =>
-  String(s ?? '').replace(/[&<>"']/g, (c) =>
-    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!))
+import { sessionPlugin, type RawApi, type AuthedApi } from './auth-guard'
+import { esc, html, redirect, shell } from './shell'
 
 export interface AuditorDeps {
-  /** Pemanggil API yang sudah membawa identitas auditor demo. */
-  api: (path: string, init?: RequestInit) => Promise<Response>
+  /** Pemanggil API mentah; token sesi disuntikkan per permintaan. */
+  raw: RawApi
   /** Basis URL publik untuk menyusun tautan form. */
   publicBase: string
 }
@@ -50,217 +51,466 @@ const STATUS_COLOR: Record<string, string> = {
   SUBMITTED: 'var(--ok)', SCORED: 'var(--ok)', REVOKED: 'var(--danger)', EXPIRED: 'var(--danger)',
 }
 
-function page(title: string, body: string): string {
-  return `<!doctype html><html lang="id"><head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="robots" content="noindex, nofollow">
-<title>${esc(title)}</title>
-<style>${STYLES}
-.tbl { width:100%; border-collapse:collapse; }
-.tbl th { text-align:left; font-size:13px; color:var(--muted); font-weight:600;
-  padding:8px 4px; border-bottom:1px solid var(--border); }
-.tbl td { padding:12px 4px; border-bottom:1px solid var(--border); font-size:15px; vertical-align:top; }
-.pill { display:inline-block; font-size:12px; font-weight:600; padding:3px 10px;
-  border-radius:999px; border:1px solid currentColor; }
-.qr { display:block; width:180px; height:180px; border:1px solid var(--border);
-  border-radius:var(--radius); background:#fff; }
-.copybox { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:13px;
-  background:var(--bg); border:1px solid var(--border); border-radius:6px;
-  padding:10px; word-break:break-all; margin:8px 0; }
-.grid { display:grid; gap:16px; }
-@media (min-width:768px) { .grid-2 { grid-template-columns:1fr 1fr; } }
-.wrap-wide { max-width:960px; margin:0 auto; padding:16px 16px 48px; }
-</style></head><body>
-<header class="bar">
-  <a href="/app" style="text-decoration:none"><span class="brand">SiapAI</span></a>
-  <span class="save" style="color:var(--muted)">Dashboard auditor</span>
-</header>
-${body}
-</body></html>`
+const SEV_LABEL: Record<string, string> = {
+  high: 'Perlu segera', medium: 'Perlu dicek', low: 'Catatan',
 }
 
-export function auditorModule({ api, publicBase }: AuditorDeps) {
-  return new Elysia()
-    // ── Daftar undangan (FR-29)
-    .get('/app', async () => {
-      const [invRes, compRes] = await Promise.all([api('/invitations'), api('/companies')])
-      const { items } = await invRes.json() as { items: Invitation[] }
-      const { items: companies } = await compRes.json() as { items: Company[] }
+/** Jumlah baris per halaman; daftar ratusan perusahaan tidak dirender sekaligus. */
+const PER_PAGE = 25
 
-      const rows = items.length === 0
-        ? `<tr><td colspan="4" class="muted" style="padding:24px 4px">
-             Belum ada undangan. Terbitkan satu di bawah.</td></tr>`
-        : items.map((i) => `<tr>
-            <td>
-              <strong>${esc(i.company_name)}</strong><br>
-              <span class="muted">${esc(i.recipient_name ?? 'Tanpa nama penerima')}</span>
-            </td>
-            <td><span class="pill" style="color:${STATUS_COLOR[i.status]}">
-              ${esc(STATUS_LABEL[i.status] ?? i.status)}</span></td>
-            <td>
-              ${i.progress.answered}/${i.progress.total_visible}
-              <div class="progress" style="margin-top:6px;width:110px">
-                <i style="width:${i.progress.percent}%"></i>
-              </div>
-            </td>
-            <td><a href="/app/undangan/${esc(i.id)}">Lihat QR</a></td>
-          </tr>`).join('')
+export function auditorModule({ raw, publicBase }: AuditorDeps) {
+  return new Elysia()
+    .use(sessionPlugin({ raw, publicBase }))
+
+    // ── Ringkasan: apa yang perlu dikerjakan hari ini
+    .get('/app', async ({ sesi }) => {
+      const s = await sesi()
+      if (!s) return redirect('/masuk')
+      const { api, cookiesBaru } = s
+      const [me, invitations] = await Promise.all([profil(api), daftarUndangan(api)])
+
+      const hitung = (f: (i: Invitation) => boolean) => invitations.filter(f).length
+      const selesai = hitung((i) => i.status === 'SCORED')
+      const berjalan = hitung((i) => ['SENT', 'OPENED', 'IN_PROGRESS'].includes(i.status))
+      const belumDibuka = hitung((i) => i.status === 'SENT')
+      const macet = invitations.filter((i) =>
+        i.status === 'IN_PROGRESS' && i.progress.percent < 50)
+
+      const terbaru = invitations.slice(0, 8)
+
+      return html(shell({
+        title: 'Ringkasan — SiapAI', active: '/app', ...(me ? { email: me.email } : {}),
+        body: `
+<div class="page-head"><h1>Ringkasan</h1>
+  <span class="spacer"></span>
+  <a class="btn btn-primary btn-sm" href="/app/undangan"
+     style="line-height:44px;text-decoration:none;text-align:center">Terbitkan undangan</a>
+</div>
+<div class="stats">
+  <div class="stat"><b>${invitations.length}</b><span>Total undangan</span></div>
+  <div class="stat"><b>${berjalan}</b><span>Sedang berjalan</span></div>
+  <div class="stat"><b>${belumDibuka}</b><span>Belum dibuka</span></div>
+  <div class="stat"><b>${selesai}</b><span>Laporan siap</span></div>
+</div>
+
+${macet.length ? `<div class="card">
+  <h2>Perlu ditindaklanjuti</h2>
+  <p class="muted">Sudah mulai mengisi tetapi berhenti di bawah setengah jalan.</p>
+  <table class="tbl"><tbody>
+    ${macet.slice(0, 6).map((i) => `<tr>
+      <td><a href="/app/undangan/${esc(i.id)}">${esc(i.company_name)}</a></td>
+      <td style="width:120px">${i.progress.answered}/${i.progress.total_visible}</td>
+    </tr>`).join('')}
+  </tbody></table>
+</div>` : ''}
+
+<div class="card">
+  <h2>Aktivitas terbaru</h2>
+  ${terbaru.length === 0
+    ? `<p class="muted">Belum ada undangan. Mulai dengan menambah perusahaan klien,
+         lalu terbitkan undangan.</p>
+       <p><a class="btn btn-primary btn-sm" href="/app/perusahaan"
+             style="display:inline-block;line-height:44px;text-decoration:none">
+         Tambah perusahaan</a></p>`
+    : `<table class="tbl">
+        <thead><tr><th>Perusahaan</th><th>Status</th><th>Progres</th><th></th></tr></thead>
+        <tbody>${terbaru.map(barisUndangan).join('')}</tbody>
+       </table>`}
+</div>`,
+      }), 200, cookiesBaru)
+    })
+
+    // ── Daftar undangan + penerbitan
+    .get('/app/undangan', async ({ sesi, query }) => {
+      const s = await sesi()
+      if (!s) return redirect('/masuk')
+      const { api, cookiesBaru } = s
+      const [me, semua, companies] = await Promise.all([
+        profil(api), daftarUndangan(api), daftarPerusahaan(api),
+      ])
+
+      const cari = (query.q ?? '').trim().toLowerCase()
+      const status = query.status ?? ''
+      const tersaring = semua.filter((i) =>
+        (!cari || i.company_name.toLowerCase().includes(cari)
+          || (i.recipient_name ?? '').toLowerCase().includes(cari))
+        && (!status || i.status === status))
+      const halaman = Math.max(1, Number(query.page ?? '1') || 1)
+      const mulai = (halaman - 1) * PER_PAGE
+      const potongan = tersaring.slice(mulai, mulai + PER_PAGE)
 
       const opts = companies.map((c) =>
         `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('')
 
-      return html(page('Dashboard auditor', `
-<main class="wrap-wide">
-  <h1>Undangan audit</h1>
-  <p class="muted">Pantau siapa yang sudah mengisi, dan ambil QR untuk dibagikan.</p>
-  <div class="card">
-    <table class="tbl">
-      <thead><tr><th>Perusahaan</th><th>Status</th><th>Progres</th><th></th></tr></thead>
-      <tbody>${rows}</tbody>
-    </table>
-  </div>
+      return html(shell({
+        title: 'Undangan — SiapAI', active: '/app/undangan', ...(me ? { email: me.email } : {}),
+        body: `
+<div class="page-head"><h1>Undangan audit</h1></div>
 
-  <div class="card">
-    <h2>Terbitkan undangan baru</h2>
-    <form method="post" action="/app/undangan">
-      <p><label for="c" class="muted">Perusahaan klien</label><br>
-        <select name="company_id" id="c" style="width:100%;min-height:48px;font-size:16px;
-          border:1px solid var(--border);border-radius:var(--radius);padding:0 12px">
-          ${opts}
-        </select></p>
-      <p><label for="r" class="muted">Nama penerima (opsional)</label><br>
-        <input name="recipient_name" id="r" placeholder="mis. Pak Budi"
-          style="width:100%;min-height:48px;font-size:16px;border:1px solid var(--border);
-          border-radius:var(--radius);padding:0 12px"></p>
-      <button class="btn btn-primary" type="submit" style="max-width:280px">
-        Terbitkan undangan</button>
-    </form>
-  </div>
+<form class="toolbar" method="get" action="/app/undangan">
+  <input class="field" type="search" name="q" value="${esc(query.q ?? '')}"
+         placeholder="Cari perusahaan atau penerima" style="flex:1;min-width:200px">
+  <select class="field" name="status">
+    <option value="">Semua status</option>
+    ${Object.entries(STATUS_LABEL).map(([v, l]) =>
+      `<option value="${v}"${status === v ? ' selected' : ''}>${esc(l)}</option>`).join('')}
+  </select>
+  <button class="btn btn-sm" type="submit">Saring</button>
+</form>
 
-  <div class="card">
-    <h2>Tambah perusahaan klien</h2>
-    <form method="post" action="/app/perusahaan">
-      <p><label for="n" class="muted">Nama perusahaan</label><br>
-        <input name="name" id="n" required placeholder="PT Contoh Sejahtera"
-          style="width:100%;min-height:48px;font-size:16px;border:1px solid var(--border);
-          border-radius:var(--radius);padding:0 12px"></p>
-      <div class="grid grid-2">
-        <p><label for="i" class="muted">Industri</label><br>
-          <select name="industry" id="i" style="width:100%;min-height:48px;font-size:16px;
-            border:1px solid var(--border);border-radius:var(--radius);padding:0 12px">
-            ${Object.entries(INDUSTRI_LABEL)
-              .map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join('')}
-          </select></p>
-        <p><label for="e" class="muted">Jumlah karyawan</label><br>
-          <select name="employee_band" id="e" style="width:100%;min-height:48px;font-size:16px;
-            border:1px solid var(--border);border-radius:var(--radius);padding:0 12px">
-            ${Object.entries(KARYAWAN_LABEL)
-              .map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join('')}
-          </select></p>
+<div class="card">
+  <table class="tbl">
+    <thead><tr><th>Perusahaan</th><th>Status</th><th>Progres</th><th></th></tr></thead>
+    <tbody>${potongan.length === 0
+      ? `<tr><td colspan="4" class="muted" style="padding:24px 6px">
+           ${semua.length === 0
+             ? 'Belum ada undangan. Terbitkan satu di bawah.'
+             : 'Tidak ada undangan yang cocok dengan saringan ini.'}</td></tr>`
+      : potongan.map(barisUndangan).join('')}</tbody>
+  </table>
+  ${paginasi('/app/undangan', query as Record<string, string>, halaman, tersaring.length)}
+</div>
+
+<div class="card">
+  <h2>Terbitkan undangan baru</h2>
+  ${companies.length === 0
+    ? `<p class="muted">Belum ada perusahaan klien.
+         <a href="/app/perusahaan">Tambahkan dulu satu perusahaan</a>.</p>`
+    : `<form method="post" action="/app/undangan">
+        <div class="grid grid-2">
+          <div>
+            <label class="lbl" for="c">Perusahaan klien</label>
+            <select class="field" name="company_id" id="c" style="width:100%">${opts}</select>
+          </div>
+          <div>
+            <label class="lbl" for="r">Nama penerima (opsional)</label>
+            <input class="field" name="recipient_name" id="r" placeholder="mis. Pak Budi"
+                   style="width:100%">
+          </div>
+        </div>
+        <button class="btn btn-primary btn-sm" type="submit" style="margin-top:14px">
+          Terbitkan undangan</button>
+      </form>`}
+</div>`,
+      }), 200, cookiesBaru)
+    }, {
+      query: t.Object({
+        q: t.Optional(t.String()), status: t.Optional(t.String()), page: t.Optional(t.String()),
+      }),
+    })
+
+    // ── Daftar & penambahan perusahaan
+    .get('/app/perusahaan', async ({ sesi, query }) => {
+      const s = await sesi()
+      if (!s) return redirect('/masuk')
+      const { api, cookiesBaru } = s
+      const [me, companies, invitations] = await Promise.all([
+        profil(api), daftarPerusahaan(api), daftarUndangan(api),
+      ])
+      const undanganPer = new Map(invitations.map((i) => [i.company_id, i]))
+
+      const cari = (query.q ?? '').trim().toLowerCase()
+      const tersaring = cari
+        ? companies.filter((c) => c.name.toLowerCase().includes(cari))
+        : companies
+      const halaman = Math.max(1, Number(query.page ?? '1') || 1)
+      const potongan = tersaring.slice((halaman - 1) * PER_PAGE, halaman * PER_PAGE)
+
+      return html(shell({
+        title: 'Perusahaan — SiapAI', active: '/app/perusahaan', ...(me ? { email: me.email } : {}),
+        body: `
+<div class="page-head"><h1>Perusahaan klien</h1>
+  <span class="spacer"></span>
+  <span class="muted" style="line-height:44px">${companies.length} terdaftar</span>
+</div>
+
+<form class="toolbar" method="get" action="/app/perusahaan">
+  <input class="field" type="search" name="q" value="${esc(query.q ?? '')}"
+         placeholder="Cari nama perusahaan" style="flex:1;min-width:200px">
+  <button class="btn btn-sm" type="submit">Cari</button>
+</form>
+
+<div class="card">
+  <table class="tbl">
+    <thead><tr><th>Nama</th><th>Industri</th><th>Karyawan</th><th>Undangan</th></tr></thead>
+    <tbody>${potongan.length === 0
+      ? `<tr><td colspan="4" class="muted" style="padding:24px 6px">
+           Belum ada perusahaan yang cocok.</td></tr>`
+      : potongan.map((c) => {
+          const inv = undanganPer.get(c.id)
+          return `<tr>
+            <td><strong>${esc(c.name)}</strong></td>
+            <td>${esc(INDUSTRI_LABEL[c.industry] ?? c.industry)}</td>
+            <td>${esc(KARYAWAN_LABEL[c.employee_band] ?? c.employee_band)}</td>
+            <td>${inv
+              ? `<a href="/app/undangan/${esc(inv.id)}">
+                   ${esc(STATUS_LABEL[inv.status] ?? inv.status)}</a>`
+              : `<form method="post" action="/app/undangan" style="margin:0">
+                   <input type="hidden" name="company_id" value="${esc(c.id)}">
+                   <button class="btn btn-sm" type="submit">Terbitkan</button>
+                 </form>`}</td>
+          </tr>`
+        }).join('')}</tbody>
+  </table>
+  ${paginasi('/app/perusahaan', query as Record<string, string>, halaman, tersaring.length)}
+</div>
+
+<div class="card">
+  <h2>Tambah perusahaan klien</h2>
+  <form method="post" action="/app/perusahaan">
+    <label class="lbl" for="n">Nama perusahaan</label>
+    <input class="field" name="name" id="n" required placeholder="PT Contoh Sejahtera"
+           style="width:100%;margin-bottom:12px">
+    <div class="grid grid-2">
+      <div>
+        <label class="lbl" for="i">Industri</label>
+        <select class="field" name="industry" id="i" style="width:100%">
+          ${Object.entries(INDUSTRI_LABEL)
+            .map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join('')}
+        </select>
       </div>
-      <button class="btn" type="submit" style="max-width:280px">Tambah perusahaan</button>
-    </form>
-  </div>
-</main>`))
+      <div>
+        <label class="lbl" for="e">Jumlah karyawan</label>
+        <select class="field" name="employee_band" id="e" style="width:100%">
+          ${Object.entries(KARYAWAN_LABEL)
+            .map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    <button class="btn btn-primary btn-sm" type="submit" style="margin-top:14px">
+      Tambah perusahaan</button>
+  </form>
+</div>`,
+      }), 200, cookiesBaru)
+    }, { query: t.Object({ q: t.Optional(t.String()), page: t.Optional(t.String()) }) })
+
+    // ── Tinjauan AI lintas perusahaan (FR-31, FR-32)
+    .get('/app/tinjauan', async ({ sesi }) => {
+      const s = await sesi()
+      if (!s) return redirect('/masuk')
+      const { api, cookiesBaru } = s
+      const [me, invitations] = await Promise.all([profil(api), daftarUndangan(api)])
+      const selesai = invitations.filter((i) => i.status === 'SCORED')
+
+      // Tinjauan yang sudah ada dibaca tanpa memanggil model.
+      const tinjauan = await Promise.all(selesai.map(async (i) => {
+        const res = await api(`/assessments/${i.assessment_id}/ai-review`)
+        return { inv: i, review: res.ok ? await res.json() as Review : null }
+      }))
+      const sudah = tinjauan.filter((x) => x.review)
+      const belum = tinjauan.length - sudah.length
+
+      // Yang paling meragukan lebih dulu: itulah gunanya daftar ini.
+      sudah.sort((a, b) => a.review!.data_quality - b.review!.data_quality)
+
+      return html(shell({
+        title: 'Tinjauan AI — SiapAI', active: '/app/tinjauan', ...(me ? { email: me.email } : {}),
+        body: `
+<div class="page-head"><h1>Tinjauan AI</h1></div>
+<p class="muted" style="margin-top:-8px">
+  Skor kesiapan tetap dihitung dari rubrik. AI hanya menilai kualitas jawaban:
+  kontradiksi, klaim tanpa bukti, dan hal yang perlu dikonfirmasi auditor.</p>
+
+<div class="stats">
+  <div class="stat"><b>${selesai.length}</b><span>Laporan selesai</span></div>
+  <div class="stat"><b>${sudah.length}</b><span>Sudah ditinjau</span></div>
+  <div class="stat"><b>${belum}</b><span>Menunggu tinjauan</span></div>
+  <div class="stat"><b>${sudah.filter((x) =>
+    x.review!.flags.some((f) => f.severity === 'high')).length}</b>
+    <span>Ada temuan berat</span></div>
+</div>
+
+${selesai.length === 0
+  ? `<div class="card"><p class="muted">Belum ada laporan selesai untuk ditinjau.</p></div>`
+  : `<div class="card">
+      <h2>Tinjau massal</h2>
+      <p class="muted">Meninjau assessment yang belum pernah ditinjau, maksimal
+         ${PER_PAGE} sekaligus, agar biaya model tetap terkendali.</p>
+      <form method="post" action="/app/tinjauan/jalankan" style="margin-top:12px">
+        <button class="btn btn-primary btn-sm" type="submit"
+          ${belum === 0 ? 'disabled' : ''}>
+          Tinjau ${belum} assessment</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>Hasil tinjauan</h2>
+      <table class="tbl">
+        <thead><tr><th>Perusahaan</th><th>Kualitas data</th><th>Temuan</th><th></th></tr></thead>
+        <tbody>${tinjauan.length === 0
+          ? `<tr><td colspan="4" class="muted">Belum ada.</td></tr>`
+          : [...sudah, ...tinjauan.filter((x) => !x.review)].map(({ inv, review }) => `
+            <tr>
+              <td><strong>${esc(inv.company_name)}</strong></td>
+              <td>${review ? `${review.data_quality}/100` : '<span class="muted">—</span>'}</td>
+              <td>${review
+                ? (review.flags.length === 0
+                    ? '<span class="muted">Tidak ada temuan</span>'
+                    : review.flags.slice(0, 3).map((f) =>
+                        `<span class="sev sev-${esc(f.severity)}">${
+                          esc(SEV_LABEL[f.severity] ?? f.severity)}</span>`).join(' '))
+                : '<span class="muted">Belum ditinjau</span>'}</td>
+              <td><a href="/app/undangan/${esc(inv.id)}">Buka</a></td>
+            </tr>`).join('')}</tbody>
+      </table>
+    </div>`}`,
+      }), 200, cookiesBaru)
+    })
+
+    .post('/app/tinjauan/jalankan', async ({ sesi }) => {
+      const s = await sesi()
+      if (!s) return redirect('/masuk')
+      await s.api('/ai-review/batch', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ limit: PER_PAGE }),
+      })
+      return redirect('/app/tinjauan')
     })
 
     // ── Detail undangan dengan QR siap pindai (FR-23, FR-24)
-    .get('/app/undangan/:id', async ({ params }) => {
+    .get('/app/undangan/:id', async ({ sesi, params }) => {
+      const s = await sesi()
+      if (!s) return redirect('/masuk')
+      const { api, cookiesBaru } = s
+      const me = await profil(api)
       const res = await api(`/invitations/${params.id}`)
-      if (!res.ok) return html(page('Tidak ditemukan',
-        `<main class="wrap-wide"><div class="card"><h1>Undangan tidak ditemukan</h1></div></main>`), 404)
+      if (!res.ok) {
+        return html(shell({
+          title: 'Tidak ditemukan', active: '/app/undangan', ...(me ? { email: me.email } : {}),
+          body: `<div class="card"><h1>Undangan tidak ditemukan</h1>
+                 <p><a href="/app/undangan">Kembali ke daftar</a></p></div>`,
+        }), 404, cookiesBaru)
+      }
       const inv = await res.json() as Invitation
       const link = (inv as Invitation & { invitation_url?: string }).invitation_url
-      // Tautan bagikan hanya relevan setelah laporan ada.
+      // Tautan bagikan dan tinjauan hanya relevan setelah laporan ada.
       const bagikan = inv.status === 'SCORED'
         ? ((await (await api(`/assessments/${inv.assessment_id}/share-links`)).json())
             .items as ShareItem[])
         : []
+      const reviewRes = inv.status === 'SCORED'
+        ? await api(`/assessments/${inv.assessment_id}/ai-review`)
+        : null
+      const review = reviewRes?.ok ? await reviewRes.json() as Review : null
 
-      return html(page(`Undangan ${inv.company_name}`, `
-<main class="wrap-wide">
-  <p><a href="/app">← Kembali ke daftar</a></p>
-  <h1>${esc(inv.company_name)}</h1>
-  <p><span class="pill" style="color:${STATUS_COLOR[inv.status]}">
-    ${esc(STATUS_LABEL[inv.status] ?? inv.status)}</span>
-    <span class="muted"> · ${inv.progress.answered} dari ${inv.progress.total_visible} terjawab</span></p>
+      return html(shell({
+        title: `Undangan ${inv.company_name}`, active: '/app/undangan',
+        ...(me ? { email: me.email } : {}),
+        body: `
+<p><a href="/app/undangan">← Kembali ke daftar</a></p>
+<div class="page-head"><h1>${esc(inv.company_name)}</h1></div>
+<p><span class="pill" style="color:${STATUS_COLOR[inv.status]}">
+  ${esc(STATUS_LABEL[inv.status] ?? inv.status)}</span>
+  <span class="muted"> · ${inv.progress.answered} dari ${inv.progress.total_visible} terjawab</span></p>
 
-  <div class="grid grid-2">
-    <div class="card">
-      <h2>Pindai dari HP</h2>
-      <p class="muted">Arahkan kamera HP ke kode ini untuk membuka form.</p>
-      <img class="qr" alt="QR code undangan untuk ${esc(inv.company_name)}"
-           src="/app/undangan/${esc(inv.id)}/qr.png">
-    </div>
-    <div class="card">
-      <h2>Atau bagikan tautan</h2>
-      ${link
-        ? `<div class="copybox">${esc(link)}</div>
-           <p><a class="btn btn-primary" href="${esc(link)}" target="_blank"
-                 style="display:inline-block;line-height:48px;text-decoration:none;
-                        text-align:center;max-width:260px">Buka form di tab ini</a></p>`
-        : `<p class="muted">Tautan hanya ditampilkan sekali saat penerbitan.
-             Gunakan QR di samping, atau terbitkan ulang untuk memperoleh tautan baru.</p>`}
-      <form method="post" action="/app/undangan/${esc(inv.id)}/reissue" style="margin-top:16px">
-        <button class="btn" type="submit" style="max-width:260px">Terbitkan ulang token</button>
-      </form>
-      <p class="muted" style="margin-top:12px">
-        Berlaku sampai ${esc(new Date(inv.expires_at).toLocaleDateString('id-ID',
-          { day: 'numeric', month: 'long', year: 'numeric' }))}</p>
-    </div>
+<div class="grid grid-2">
+  <div class="card">
+    <h2>Pindai dari HP</h2>
+    <p class="muted">Arahkan kamera HP ke kode ini untuk membuka form.</p>
+    <img class="qr" alt="QR code undangan untuk ${esc(inv.company_name)}"
+         src="/app/undangan/${esc(inv.id)}/qr.png">
   </div>
+  <div class="card">
+    <h2>Atau bagikan tautan</h2>
+    ${link
+      ? `<div class="copybox">${esc(link)}</div>
+         <p><a class="btn btn-primary btn-sm" href="${esc(link)}" target="_blank"
+               style="display:inline-block;line-height:44px;text-decoration:none;
+                      text-align:center">Buka form di tab baru</a></p>`
+      : `<p class="muted">Tautan tidak tersedia untuk undangan ini.
+           Terbitkan ulang untuk memperoleh tautan baru.</p>`}
+    <form method="post" action="/app/undangan/${esc(inv.id)}/reissue" style="margin-top:16px">
+      <button class="btn btn-sm" type="submit">Terbitkan ulang token</button>
+    </form>
+    <p class="muted" style="margin-top:12px">
+      Berlaku sampai ${esc(tanggal(inv.expires_at))}</p>
+  </div>
+</div>
 
-  ${inv.status === 'SCORED'
-    ? `<div class="card">
-        <h2>Hasil sudah tersedia</h2>
-        <p class="muted">Responden telah mengirim jawaban dan laporan sudah dihitung.</p>
-        <div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:12px">
-          ${link
-            ? `<a class="btn btn-primary" href="${esc(link)}/hasil"
-                  style="line-height:48px;text-decoration:none;text-align:center;max-width:240px">
-                 Lihat laporan</a>`
-            : ''}
-          <a class="btn" href="/app/undangan/${esc(inv.id)}/pdf"
-             style="line-height:48px;text-decoration:none;text-align:center;max-width:240px">
-            Unduh PDF</a>
-          <form method="post" action="/app/undangan/${esc(inv.id)}/bagikan" style="margin:0">
-            <button class="btn" type="submit" style="min-width:200px">Buat tautan bagikan</button>
-          </form>
-        </div>
-        ${bagikan.length
-          ? `<h3 style="font-size:16px;margin:20px 0 8px">Tautan bagikan</h3>
-             ${bagikan.map((b) => `
-               <div style="border-top:1px solid var(--border);padding:12px 0">
-                 ${b.url ? `<div class="copybox">${esc(b.url)}</div>` : ''}
-                 <p class="muted" style="margin:4px 0">
-                   ${b.revoked ? 'Dicabut' : `Berlaku sampai ${esc(tanggal(b.expires_at))}`}
-                   · dilihat ${b.view_count}x
-                   ${b.anonymize ? ' · nama disembunyikan' : ''}
-                 </p>
-                 ${b.revoked ? '' : `<form method="post"
-                    action="/app/bagikan/${esc(b.id)}/cabut" style="margin:0">
-                   <button class="btn" type="submit" style="min-width:140px">Cabut</button>
-                 </form>`}
-               </div>`).join('')}`
+${inv.status === 'SCORED'
+  ? `<div class="card">
+      <h2>Hasil sudah tersedia</h2>
+      <p class="muted">Responden telah mengirim jawaban dan laporan sudah dihitung.</p>
+      <div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:12px">
+        ${link
+          ? `<a class="btn btn-primary btn-sm" href="${esc(link)}/hasil"
+                style="line-height:44px;text-decoration:none;text-align:center">
+               Lihat laporan</a>`
           : ''}
-       </div>`
-    : ''}
-</main>`))
+        <a class="btn btn-sm" href="/app/undangan/${esc(inv.id)}/pdf"
+           style="line-height:44px;text-decoration:none;text-align:center">Unduh PDF</a>
+        <form method="post" action="/app/undangan/${esc(inv.id)}/bagikan" style="margin:0">
+          <button class="btn btn-sm" type="submit">Buat tautan bagikan</button>
+        </form>
+      </div>
+      ${bagikan.length
+        ? `<h3 style="font-size:16px;margin:20px 0 8px">Tautan bagikan</h3>
+           ${bagikan.map((b) => `
+             <div style="border-top:1px solid var(--border);padding:12px 0">
+               ${b.url ? `<div class="copybox">${esc(b.url)}</div>` : ''}
+               <p class="muted" style="margin:4px 0">
+                 ${b.revoked ? 'Dicabut' : `Berlaku sampai ${esc(tanggal(b.expires_at))}`}
+                 · dilihat ${b.view_count}x
+                 ${b.anonymize ? ' · nama disembunyikan' : ''}
+               </p>
+               ${b.revoked ? '' : `<form method="post"
+                  action="/app/bagikan/${esc(b.id)}/cabut" style="margin:0">
+                 <button class="btn btn-sm" type="submit">Cabut</button>
+               </form>`}
+             </div>`).join('')}`
+        : ''}
+     </div>
+
+     <div class="card">
+       <h2>Tinjauan AI</h2>
+       ${review
+         ? `<p><strong style="font-size:22px">${review.data_quality}/100</strong>
+              <span class="muted"> kualitas data · ${esc(review.model)}</span></p>
+            <p>${esc(review.summary)}</p>
+            ${review.flags.length === 0
+              ? '<p class="muted">Tidak ada temuan yang perlu dikonfirmasi.</p>'
+              : review.flags.map((f) => `
+                <div class="flag">
+                  <span class="sev sev-${esc(f.severity)}">${
+                    esc(SEV_LABEL[f.severity] ?? f.severity)}</span>
+                  ${f.question_codes.length
+                    ? `<span class="q"> ${esc(f.question_codes.join(', '))}</span>` : ''}
+                  <p style="margin:6px 0 4px">${esc(f.issue)}</p>
+                  ${f.follow_up ? `<p class="muted">Tanyakan: ${esc(f.follow_up)}</p>` : ''}
+                </div>`).join('')}
+            ${review.next_checks.length
+              ? `<h3 style="font-size:15px;margin:16px 0 6px">Langkah verifikasi</h3>
+                 <ul class="muted">${review.next_checks
+                   .map((c) => `<li>${esc(c)}</li>`).join('')}</ul>`
+              : ''}`
+         : `<p class="muted">Belum ditinjau. AI akan memeriksa konsistensi jawaban dan
+              menyiapkan pertanyaan konfirmasi untuk Anda.</p>`}
+       <form method="post" action="/app/undangan/${esc(inv.id)}/tinjau" style="margin-top:12px">
+         <button class="btn btn-sm" type="submit">
+           ${review ? 'Tinjau ulang' : 'Tinjau dengan AI'}</button>
+       </form>
+     </div>`
+  : ''}`,
+      }), 200, cookiesBaru)
     }, { params: t.Object({ id: t.String() }) })
 
     // Proksi gambar QR agar dashboard tidak perlu menyematkan kredensial di HTML.
-    .get('/app/undangan/:id/qr.png', async ({ params, set }) => {
-      const res = await api(`/invitations/${params.id}/qr.png`)
+    .get('/app/undangan/:id/qr.png', async ({ sesi, params, set }) => {
+      const s = await sesi()
+      if (!s) return redirect('/masuk')
+      const res = await s.api(`/invitations/${params.id}/qr.png`)
       if (!res.ok) { set.status = 404; return 'not found' }
       set.headers['content-type'] = 'image/png'
       set.headers['cache-control'] = 'private, no-store'
       return new Response(await res.arrayBuffer())
     }, { params: t.Object({ id: t.String() }) })
 
-    .post('/app/undangan', async ({ body }) => {
+    .post('/app/undangan', async ({ sesi, body }) => {
+      const s = await sesi()
+      if (!s) return redirect('/masuk')
       const f = body as Record<string, string>
-      const res = await api('/invitations', {
+      const res = await s.api('/invitations', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -269,29 +519,47 @@ export function auditorModule({ api, publicBase }: AuditorDeps) {
         }),
       })
       if (!res.ok) {
-        const e = await res.json() as { error: { message: string; details?: { invitation_id?: string } } }
+        const e = await res.json() as {
+          error: { message: string; details?: { invitation_id?: string } }
+        }
         const id = e.error.details?.invitation_id
         // Sudah ada undangan aktif: arahkan ke sana, jangan buntu.
-        return id ? redirect(`/app/undangan/${id}`) : html(page('Gagal',
-          `<main class="wrap-wide"><div class="card">
-             <h1>Tidak dapat menerbitkan</h1><p>${esc(e.error.message)}</p>
-             <p><a href="/app">Kembali</a></p></div></main>`), 409)
+        return id ? redirect(`/app/undangan/${id}`) : html(shell({
+          title: 'Gagal', active: '/app/undangan',
+          body: `<div class="card"><h1>Tidak dapat menerbitkan</h1>
+                 <p>${esc(e.error.message)}</p>
+                 <p><a href="/app/undangan">Kembali</a></p></div>`,
+        }), 409)
       }
       const inv = await res.json() as { id: string }
       return redirect(`/app/undangan/${inv.id}`)
     })
 
-    .post('/app/undangan/:id/reissue', async ({ params }) => {
-      const res = await api(`/invitations/${params.id}/reissue`, { method: 'POST' })
-      if (!res.ok) return redirect('/app')
+    .post('/app/undangan/:id/reissue', async ({ sesi, params }) => {
+      const s = await sesi()
+      if (!s) return redirect('/masuk')
+      const res = await s.api(`/invitations/${params.id}/reissue`, { method: 'POST' })
+      if (!res.ok) return redirect('/app/undangan')
       const inv = await res.json() as { id: string }
       return redirect(`/app/undangan/${inv.id}`)
     }, { params: t.Object({ id: t.String() }) })
 
+    // ── FR-31 tinjauan AI untuk satu undangan
+    .post('/app/undangan/:id/tinjau', async ({ sesi, params }) => {
+      const s = await sesi()
+      if (!s) return redirect('/masuk')
+      const inv = await (await s.api(`/invitations/${params.id}`)).json() as Invitation
+      // refresh=1: tombol ini selalu berarti "tinjau sekarang", bukan baca cache.
+      await s.api(`/assessments/${inv.assessment_id}/ai-review?refresh=1`, { method: 'POST' })
+      return redirect(`/app/undangan/${params.id}`)
+    }, { params: t.Object({ id: t.String() }) })
+
     // ── FR-18 buat tautan bagikan dari dashboard
-    .post('/app/undangan/:id/bagikan', async ({ params }) => {
-      const inv = await (await api(`/invitations/${params.id}`)).json() as Invitation
-      await api(`/assessments/${inv.assessment_id}/share-links`, {
+    .post('/app/undangan/:id/bagikan', async ({ sesi, params }) => {
+      const s = await sesi()
+      if (!s) return redirect('/masuk')
+      const inv = await (await s.api(`/invitations/${params.id}`)).json() as Invitation
+      await s.api(`/assessments/${inv.assessment_id}/share-links`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({}),
@@ -299,22 +567,27 @@ export function auditorModule({ api, publicBase }: AuditorDeps) {
       return redirect(`/app/undangan/${params.id}`)
     }, { params: t.Object({ id: t.String() }) })
 
-    .post('/app/bagikan/:id/cabut', async ({ params, headers }) => {
-      await api(`/share-links/${params.id}`, { method: 'DELETE' })
+    .post('/app/bagikan/:id/cabut', async ({ sesi, params, headers }) => {
+      const s = await sesi()
+      if (!s) return redirect('/masuk')
+      await s.api(`/share-links/${params.id}`, { method: 'DELETE' })
       // Kembali ke halaman asal agar konteks auditor tidak hilang.
-      return redirect(headers.referer ?? '/app')
+      return redirect(headers.referer ?? '/app/undangan')
     }, { params: t.Object({ id: t.String() }) })
 
     // ── FR-17 unduh PDF lewat dashboard
-    .get('/app/undangan/:id/pdf', async ({ params, set }) => {
-      const inv = await (await api(`/invitations/${params.id}`)).json() as Invitation
-      const res = await api(`/assessments/${inv.assessment_id}/report/pdf`, { method: 'POST' })
+    .get('/app/undangan/:id/pdf', async ({ sesi, params, set }) => {
+      const s = await sesi()
+      if (!s) return redirect('/masuk')
+      const inv = await (await s.api(`/invitations/${params.id}`)).json() as Invitation
+      const res = await s.api(`/assessments/${inv.assessment_id}/report/pdf`, { method: 'POST' })
       if (!res.ok) {
-        set.status = res.status
-        return html(page('Gagal membuat PDF', `<main class="wrap-wide"><div class="card">
-          <h1>PDF belum dapat dibuat</h1>
-          <p class="muted">Perender PDF tidak tersedia di lingkungan ini.</p>
-          <p><a href="/app/undangan/${esc(params.id)}">Kembali</a></p></div></main>`), res.status)
+        return html(shell({
+          title: 'Gagal membuat PDF', active: '/app/undangan',
+          body: `<div class="card"><h1>PDF belum dapat dibuat</h1>
+            <p class="muted">Perender PDF tidak tersedia di lingkungan ini.</p>
+            <p><a href="/app/undangan/${esc(params.id)}">Kembali</a></p></div>`,
+        }), res.status)
       }
       set.headers['content-type'] = 'application/pdf'
       set.headers['content-disposition'] =
@@ -322,21 +595,81 @@ export function auditorModule({ api, publicBase }: AuditorDeps) {
       return new Response(await res.arrayBuffer())
     }, { params: t.Object({ id: t.String() }) })
 
-    .post('/app/perusahaan', async ({ body }) => {
+    .post('/app/perusahaan', async ({ sesi, body }) => {
+      const s = await sesi()
+      if (!s) return redirect('/masuk')
       const f = body as Record<string, string>
-      await api('/companies', {
+      await s.api('/companies', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           name: f.name, industry: f.industry, employee_band: f.employee_band,
         }),
       })
-      return redirect('/app')
+      return redirect('/app/perusahaan')
     })
 }
 
+// ── Pengambilan data
+
+const profil = async (api: AuthedApi): Promise<Me | null> => {
+  const res = await api('/auth/me')
+  return res.ok ? await res.json() as Me : null
+}
+
+const daftarUndangan = async (api: AuthedApi): Promise<Invitation[]> => {
+  const res = await api('/invitations')
+  return res.ok ? (await res.json() as { items: Invitation[] }).items : []
+}
+
+const daftarPerusahaan = async (api: AuthedApi): Promise<Company[]> => {
+  const res = await api('/companies')
+  return res.ok ? (await res.json() as { items: Company[] }).items : []
+}
+
+// ── Potongan tampilan
+
+function barisUndangan(i: Invitation): string {
+  return `<tr>
+    <td>
+      <strong>${esc(i.company_name)}</strong><br>
+      <span class="muted">${esc(i.recipient_name ?? 'Tanpa nama penerima')}</span>
+    </td>
+    <td><span class="pill" style="color:${STATUS_COLOR[i.status]}">
+      ${esc(STATUS_LABEL[i.status] ?? i.status)}</span></td>
+    <td>
+      ${i.progress.answered}/${i.progress.total_visible}
+      <div class="progress" style="margin-top:6px;width:110px">
+        <i style="width:${i.progress.percent}%"></i>
+      </div>
+    </td>
+    <td><a href="/app/undangan/${esc(i.id)}">Lihat QR</a></td>
+  </tr>`
+}
+
+/** Navigasi halaman; hanya muncul bila memang ada lebih dari satu halaman. */
+function paginasi(
+  base: string, query: Record<string, string>, halaman: number, total: number,
+): string {
+  const jumlah = Math.ceil(total / PER_PAGE)
+  if (jumlah <= 1) return ''
+  const tautan = (n: number, label: string) => {
+    const p = new URLSearchParams({ ...query, page: String(n) })
+    return `<a class="btn btn-sm" href="${base}?${p}"
+      style="display:inline-block;line-height:44px;text-decoration:none">${label}</a>`
+  }
+  return `<div class="toolbar" style="margin:16px 0 0">
+    ${halaman > 1 ? tautan(halaman - 1, '← Sebelumnya') : ''}
+    <span class="muted">Halaman ${halaman} dari ${jumlah} · ${total} entri</span>
+    ${halaman < jumlah ? tautan(halaman + 1, 'Berikutnya →') : ''}
+  </div>`
+}
+
+interface Me { id: string; email: string; name: string; role: string }
+
 interface Invitation {
   id: string
+  company_id: string
   assessment_id: string
   company_name: string
   status: string
@@ -344,7 +677,12 @@ interface Invitation {
   expires_at: string
   progress: { answered: number; total_visible: number; percent: number }
 }
-interface Company { id: string; name: string }
+interface Company {
+  id: string
+  name: string
+  industry: string
+  employee_band: string
+}
 
 interface ShareItem {
   id: string
@@ -355,17 +693,14 @@ interface ShareItem {
   view_count: number
 }
 
+interface Review {
+  data_quality: number
+  summary: string
+  flags: { question_codes: string[]; severity: string; issue: string; follow_up: string }[]
+  next_checks: string[]
+  model: string
+  reviewed_at: string
+}
+
 const tanggal = (iso: string) =>
   new Date(iso).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
-
-const html = (body: string, status = 200) =>
-  new Response(body, {
-    status,
-    headers: {
-      'content-type': 'text/html; charset=utf-8',
-      'x-robots-tag': 'noindex, nofollow',
-      'cache-control': 'no-store',
-    },
-  })
-
-const redirect = (to: string) => new Response(null, { status: 303, headers: { location: to } })

@@ -1,42 +1,93 @@
-import '../../api/test/setup-dev-tokens'
 /**
- * Uji dashboard auditor (FR-23, FR-24, FR-27, FR-29).
- * Menelusuri HTML seperti browser, sama seperti uji form responden.
+ * Uji dashboard auditor (FR-02, FR-23, FR-24, FR-27, FR-29).
+ * Menelusuri HTML seperti browser, termasuk login dan cookie sesi.
  */
 import { describe, it, expect } from 'bun:test'
 import { createApp } from '../../api/src/app'
-import { auditorModule } from '../src/auditor'
-import { createWeb } from '../src/web'
-import { Elysia } from 'elysia'
+import { hashPassword } from '../../api/src/lib/auth'
+import { createWebApp } from '../src/app'
 
 const BASE = 'http://localhost:3000'
+const SANDI = 'sandiAuditor123'
 
+/**
+ * Menyiapkan aplikasi web lengkap dan satu sesi auditor yang benar-benar masuk
+ * lewat halaman /masuk, sehingga uji menempuh jalur yang sama dengan pengguna.
+ */
 async function setup() {
   const { app: apiApp, repo } = createApp({ baseUrl: BASE })
-  const auditor = await repo.createAuditor({ email: 'd@x.id', name: 'Dimas', role: 'auditor_admin' })
-  const lain = await repo.createAuditor({ email: 'o@x.id', name: 'Other', role: 'auditor' })
+  const auditor = await repo.createAuditor({
+    email: 'd@x.id', name: 'Dimas', role: 'auditor_admin', password_hash: hashPassword(SANDI),
+  })
+  const lain = await repo.createAuditor({
+    email: 'o@x.id', name: 'Other', role: 'auditor', password_hash: hashPassword(SANDI),
+  })
 
-  const asAuditor = (id: string) => (path: string, init: RequestInit = {}) =>
+  const raw = (path: string, init: RequestInit = {}, token?: string) =>
     apiApp.handle(new Request(`http://localhost:3001${path}`, {
       ...init,
-      headers: { ...(init.headers ?? {}), authorization: `Bearer user:${id}` },
+      headers: { ...(init.headers ?? {}), ...(token ? { authorization: `Bearer ${token}` } : {}) },
     }))
-  const publik = (path: string, init?: RequestInit) =>
-    apiApp.handle(new Request(`http://localhost:3001${path}`, init))
+  const publik = (path: string, init?: RequestInit) => raw(path, init)
 
-  const app = new Elysia()
-    .use(auditorModule({ api: asAuditor(auditor.id), publicBase: BASE }))
-    .use(createWeb({ api: publik }))
+  const app = createWebApp({ raw, publicBase: BASE })
 
-  const get = (p: string) => app.handle(new Request(`${BASE}${p}`))
-  const post = (p: string, form: Record<string, string>) =>
-    app.handle(new Request(`${BASE}${p}`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams(form).toString(),
-    }))
+  /** Klien peramban sederhana: menyimpan cookie antar permintaan. */
+  function klien() {
+    let cookie = ''
+    const simpan = (res: Response) => {
+      const set = res.headers.getSetCookie?.() ?? []
+      const jar = new Map(cookie ? cookie.split('; ').map((c) => {
+        const i = c.indexOf('=')
+        return [c.slice(0, i), c.slice(i + 1)] as [string, string]
+      }) : [])
+      for (const c of set) {
+        const [pasangan] = c.split(';')
+        const i = pasangan!.indexOf('=')
+        const nama = pasangan!.slice(0, i)
+        const nilai = pasangan!.slice(i + 1)
+        if (/Max-Age=0/.test(c) || nilai === '') jar.delete(nama)
+        else jar.set(nama, nilai)
+      }
+      cookie = [...jar].map(([k, v]) => `${k}=${v}`).join('; ')
+      return res
+    }
+    const get = (p: string) => app.handle(new Request(`${BASE}${p}`, {
+      headers: cookie ? { cookie } : {},
+    })).then(simpan)
+    const post = (p: string, form: Record<string, string>) =>
+      app.handle(new Request(`${BASE}${p}`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/x-www-form-urlencoded',
+          ...(cookie ? { cookie } : {}),
+        },
+        body: new URLSearchParams(form).toString(),
+      })).then(simpan)
+    return { get, post, masuk: (email: string) => post('/masuk', { email, password: SANDI }) }
+  }
 
-  return { app, repo, auditor, lain, get, post, api: asAuditor(auditor.id), apiAs: asAuditor, publik }
+  const utama = klien()
+  await utama.masuk(auditor.email)
+
+  /** Pemanggil API langsung sebagai auditor tertentu, untuk menyiapkan data uji. */
+  const apiAs = (id: string) => (path: string, init: RequestInit = {}) =>
+    raw(path, init, tokenDev(id))
+
+  return {
+    app, repo, auditor, lain, klien,
+    get: utama.get, post: utama.post,
+    api: apiAs(auditor.id), apiAs, publik,
+  }
+}
+
+/**
+ * Token pengembangan hanya dipakai untuk menyiapkan data uji lewat API,
+ * bukan untuk menembus dashboard; dashboard selalu memakai sesi sungguhan.
+ */
+function tokenDev(id: string) {
+  process.env.ALLOW_DEV_TOKENS = '1'
+  return `user:${id}`
 }
 
 /** Nilai jawaban terbaik untuk sebuah pertanyaan. */
@@ -65,14 +116,14 @@ async function tambahPerusahaan(t: Awaited<ReturnType<typeof setup>>, name = 'PT
 describe('FR-29 dashboard auditor', () => {
   it('menampilkan pesan kosong yang jelas saat belum ada undangan', async () => {
     const t = await setup()
-    const page = await (await t.get('/app')).text()
+    const page = await (await t.get('/app/undangan')).text()
     expect(page).toContain('Belum ada undangan')
   })
 
   it('perusahaan yang ditambahkan muncul di pilihan penerbitan', async () => {
     const t = await setup()
     await tambahPerusahaan(t, 'PT Sinar Abadi')
-    const page = await (await t.get('/app')).text()
+    const page = await (await t.get('/app/undangan')).text()
     expect(page).toContain('PT Sinar Abadi')
   })
 
@@ -90,7 +141,7 @@ describe('FR-29 dashboard auditor', () => {
     const t = await setup()
     const c = await tambahPerusahaan(t)
     await t.post('/app/undangan', { company_id: c.id, recipient_name: 'Bu Sari' })
-    const page = await (await t.get('/app')).text()
+    const page = await (await t.get('/app/undangan')).text()
     expect(page).toContain('Terkirim')
     expect(page).toContain('Bu Sari')
     expect(page).toMatch(/0\/\d+/)
@@ -104,13 +155,13 @@ describe('FR-29 dashboard auditor', () => {
     const link = /http:\/\/localhost:3000\/f\/([A-Za-z0-9_-]+)/.exec(detail)![1]!
 
     await t.publik(`/f/${link}`)
-    expect(await (await t.get('/app')).text()).toContain('Sudah dibuka')
+    expect(await (await t.get('/app/undangan')).text()).toContain('Sudah dibuka')
 
     await t.publik(`/f/${link}/answers`, {
       method: 'PATCH', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ answers: [{ question_code: 'DAT-01', value: { choice: 'opt_75' } }] }),
     })
-    const page = await (await t.get('/app')).text()
+    const page = await (await t.get('/app/undangan')).text()
     expect(page).toContain('Sedang diisi')
     expect(page).toMatch(/1\/\d+/)
   })
@@ -217,22 +268,19 @@ describe('isolasi antar auditor', () => {
     const res = await t.post('/app/undangan', { company_id: c.id })
     const id = res.headers.get('location')!.split('/').pop()!
 
-    // Dashboard terpisah yang memakai identitas auditor kedua.
-    const dashLain = new Elysia().use(auditorModule({
-      api: (p, init = {}) => t.apiAs(t.lain.id)(p, init),
-      publicBase: BASE,
-    }))
-    const getLain = (p: string) => dashLain.handle(new Request(`${BASE}${p}`))
+    // Sesi peramban kedua, milik auditor lain.
+    const lain = t.klien()
+    await lain.masuk(t.lain.email)
 
-    const daftar = await (await getLain('/app')).text()
+    const daftar = await (await lain.get('/app/undangan')).text()
     expect(daftar).toContain('Belum ada undangan')
     expect(daftar).not.toContain('PT Coba')
 
-    const detail = await getLain(`/app/undangan/${id}`)
+    const detail = await lain.get(`/app/undangan/${id}`)
     expect(detail.status).toBe(404)
 
     // QR pun tidak boleh bocor ke auditor lain.
-    expect((await getLain(`/app/undangan/${id}/qr.png`)).status).toBe(404)
+    expect((await lain.get(`/app/undangan/${id}/qr.png`)).status).toBe(404)
   })
 })
 
@@ -293,7 +341,7 @@ describe('auditor dapat membuka laporan setelah responden selesai', () => {
 describe('label dalam bahasa manusia', () => {
   it('pilihan industri memakai label, bukan nilai enum mentah', async () => {
     const t = await setup()
-    const page = await (await t.get('/app')).text()
+    const page = await (await t.get('/app/perusahaan')).text()
     expect(page).toContain('Retail &amp; e-commerce')
     expect(page).toContain('Makanan &amp; minuman')
     expect(page).not.toMatch(/>retail_ecommerce</)
@@ -302,7 +350,7 @@ describe('label dalam bahasa manusia', () => {
 
   it('pilihan jumlah karyawan terbaca manusia', async () => {
     const t = await setup()
-    const page = await (await t.get('/app')).text()
+    const page = await (await t.get('/app/perusahaan')).text()
     expect(page).toContain('50–99 orang')
     expect(page).toContain('1000 orang atau lebih')
     expect(page).not.toMatch(/>1000_plus</)
@@ -317,7 +365,7 @@ describe('keamanan output dashboard', () => {
       industry: 'fnb', employee_band: '10_49', country: 'ID',
     })
     await t.post('/app/undangan', { company_id: c.id })
-    const page = await (await t.get('/app')).text()
+    const page = await (await t.get('/app/undangan')).text()
     expect(page).not.toContain('<img src=x onerror=alert(1)>')
     expect(page).toContain('&lt;img')
   })

@@ -299,3 +299,22 @@ export const SharedReport = t.Object({
   result: ScoreResult,
   recommendations: RecommendationBundle,
 })
+
+// ── Tinjauan AI (FR-31)
+
+export const AiReviewFlag = t.Object({
+  question_codes: t.Array(t.String()),
+  severity: t.Union([t.Literal('low'), t.Literal('medium'), t.Literal('high')]),
+  issue: t.String(),
+  follow_up: t.String(),
+})
+
+export const AiReview = t.Object({
+  /** 0..100: seberapa layak jawaban dipercaya apa adanya. */
+  data_quality: t.Integer({ minimum: 0, maximum: 100 }),
+  summary: t.String(),
+  flags: t.Array(AiReviewFlag),
+  next_checks: t.Array(t.String()),
+  model: t.String(),
+  reviewed_at: t.String(),
+})

@@ -67,6 +67,7 @@ function toAssessment(r: AssessmentSelect, rows: AnswerSelect[]): AssessmentRow 
     server_revision: r.serverRevision,
     answers,
     ...(r.scoreSnapshot ? { score_snapshot: r.scoreSnapshot } : {}),
+    ...(r.aiReview ? { ai_review: r.aiReview } : {}),
   }
 }
 
@@ -121,6 +122,13 @@ function toInvite(r: typeof s.auditorInvites.$inferSelect): AuditorInviteRow {
   }
 }
 
+function toAuditor(r: typeof s.auditors.$inferSelect): AuditorRow {
+  return {
+    id: r.id, email: r.email, name: r.name, role: r.role,
+    ...(r.passwordHash ? { password_hash: r.passwordHash } : {}),
+  }
+}
+
 /** Status yang masih memungkinkan responden mengisi form. */
 const AKTIF = ['SENT', 'OPENED', 'IN_PROGRESS'] as const
 
@@ -135,20 +143,27 @@ export function createPgRepo(db: Db): Repo {
   return {
     async createAuditor(input) {
       const [r] = await db.insert(s.auditors)
-        .values({ email: input.email, name: input.name, role: input.role })
+        .values({
+          email: input.email, name: input.name, role: input.role,
+          passwordHash: input.password_hash ?? null,
+        })
         .returning()
-      return { id: r!.id, email: r!.email, name: r!.name, role: r!.role }
+      return toAuditor(r!)
     },
 
     async getAuditor(id) {
       const [r] = await db.select().from(s.auditors).where(eq(s.auditors.id, id))
-      return r ? { id: r.id, email: r.email, name: r.name, role: r.role } : undefined
+      return r ? toAuditor(r) : undefined
     },
 
     async getAuditorByEmail(email) {
       const [r] = await db.select().from(s.auditors)
         .where(eq(s.auditors.email, email.toLowerCase()))
-      return r ? { id: r.id, email: r.email, name: r.name, role: r.role } : undefined
+      return r ? toAuditor(r) : undefined
+    },
+
+    async setAuditorPassword(id, passwordHash) {
+      await db.update(s.auditors).set({ passwordHash }).where(eq(s.auditors.id, id))
     },
 
     async createOtpChallenge(input) {
@@ -331,6 +346,7 @@ export function createPgRepo(db: Db): Repo {
           submittedAt: row.submitted_at ? new Date(row.submitted_at) : null,
           serverRevision: row.server_revision,
           scoreSnapshot: row.score_snapshot ?? null,
+          aiReview: row.ai_review ?? null,
         }).where(eq(s.assessments.id, row.id))
 
         const kode = [...row.answers.keys()]

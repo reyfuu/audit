@@ -82,10 +82,9 @@ export function createWeb({ api }: WebDeps) {
     return s.questions.find((q) => !answered.has(q.code)) ?? null
   }
 
+  // Rute akar tidak didefinisikan di sini: modul ini hanya melayani jalur
+  // bertoken (/f dan /l). Halaman depan menjadi urusan komposisi aplikasi.
   return new Elysia()
-    .get('/', () => html(`<!doctype html><meta charset="utf-8">
-      <title>SiapAI</title><p>Buka tautan undangan Anda untuk mulai mengisi.</p>`))
-
     // ── Sambutan
     .get('/f/:token', async ({ params }) => {
       const res = await api(`/f/${params.token}`)

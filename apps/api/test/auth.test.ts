@@ -5,7 +5,9 @@
 import { describe, expect, it } from 'bun:test'
 import { createApp } from '../src/app'
 import { createMemoryRepo } from '../src/lib/repo'
-import { issueAccessToken, verifyAccessToken } from '../src/lib/auth'
+import {
+  hashPassword, issueAccessToken, verifyAccessToken, verifyPassword,
+} from '../src/lib/auth'
 import { parseBearer } from '../src/lib/guards'
 
 const BASE = 'http://localhost:3001'
@@ -368,5 +370,126 @@ describe('token pengembangan hanya aktif bila diizinkan', () => {
     } finally {
       if (semula !== undefined) process.env.ALLOW_DEV_TOKENS = semula
     }
+  })
+})
+
+describe('FR-02 login kata sandi', () => {
+  /** Akun dengan kata sandi yang sudah ditetapkan. */
+  async function akunBerkataSandi(t: ReturnType<typeof setup>, password = 'kataSandiPanjang1') {
+    const a = await t.repo.createAuditor({
+      email: 'pass@x.id', name: 'Pass', role: 'auditor',
+      password_hash: hashPassword(password),
+    })
+    return a
+  }
+
+  it('menerbitkan sesi untuk kata sandi yang benar', async () => {
+    const t = setup()
+    await akunBerkataSandi(t)
+    const res = await t.call('/auth/login', { email: 'pass@x.id', password: 'kataSandiPanjang1' })
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(verifyAccessToken(body.access_token)?.sub).toBeString()
+    expect(body.refresh_token).toBeString()
+  })
+
+  it('email tidak dikenal dan kata sandi salah menghasilkan respons identik', async () => {
+    const t = setup()
+    await akunBerkataSandi(t)
+    const salah = await t.call('/auth/login', { email: 'pass@x.id', password: 'salah-sekali' })
+    const asing = await t.call('/auth/login', { email: 'hantu@x.id', password: 'salah-sekali' })
+    expect(salah.status).toBe(401)
+    expect(asing.status).toBe(401)
+    // trace_id sengaja berbeda per permintaan; kode dan pesannya yang harus sama.
+    const a = (await salah.json()).error
+    const b = (await asing.json()).error
+    expect([a.code, a.message]).toEqual([b.code, b.message])
+  })
+
+  it('akun tanpa kata sandi tidak bisa ditembus dengan kata sandi kosong', async () => {
+    const t = setup()
+    await t.repo.createAuditor({ email: 'kosong@x.id', name: 'K', role: 'auditor' })
+    const res = await t.call('/auth/login', { email: 'kosong@x.id', password: ' ' })
+    expect(res.status).toBe(401)
+  })
+
+  it('email tidak peka huruf besar-kecil', async () => {
+    const t = setup()
+    await akunBerkataSandi(t)
+    const res = await t.call('/auth/login', { email: 'PASS@X.ID', password: 'kataSandiPanjang1' })
+    expect(res.status).toBe(200)
+  })
+
+  it('sesi hasil login dapat memakai refresh token seperti jalur OTP', async () => {
+    const t = setup()
+    await akunBerkataSandi(t)
+    const masuk = await (await t.call('/auth/login',
+      { email: 'pass@x.id', password: 'kataSandiPanjang1' })).json()
+    const res = await t.call('/auth/refresh', { refresh_token: masuk.refresh_token })
+    expect(res.status).toBe(200)
+  })
+})
+
+describe('FR-02 penetapan kata sandi', () => {
+  /** Access token sungguhan lewat jalur OTP; file uji ini tidak memakai token pintasan. */
+  async function sesi(t: ReturnType<typeof setup>, email: string) {
+    const { body } = await login(t, email)
+    return { authorization: `Bearer ${body.access_token}` }
+  }
+
+  it('auditor tanpa kata sandi dapat menetapkannya lalu login', async () => {
+    const t = setup()
+    await t.repo.createAuditor({ email: 'baru@x.id', name: 'Baru', role: 'auditor' })
+    const set = await t.call('/auth/password', { new_password: 'rahasiaPanjang123' },
+      await sesi(t, 'baru@x.id'))
+    expect(set.status).toBe(204)
+    const login = await t.call('/auth/login', { email: 'baru@x.id', password: 'rahasiaPanjang123' })
+    expect(login.status).toBe(200)
+  })
+
+  it('mengganti kata sandi menuntut kata sandi lama', async () => {
+    const t = setup()
+    await t.repo.createAuditor({
+      email: 'ganti@x.id', name: 'G', role: 'auditor',
+      password_hash: hashPassword('lamaPanjangSekali'),
+    })
+    const h = await sesi(t, 'ganti@x.id')
+    const tanpa = await t.call('/auth/password', { new_password: 'baruPanjangSekali' }, h)
+    expect(tanpa.status).toBe(401)
+
+    const dengan = await t.call('/auth/password',
+      { current_password: 'lamaPanjangSekali', new_password: 'baruPanjangSekali' }, h)
+    expect(dengan.status).toBe(204)
+  })
+
+  it('menolak kata sandi yang terlalu pendek', async () => {
+    const t = setup()
+    await t.repo.createAuditor({ email: 'pendek@x.id', name: 'P', role: 'auditor' })
+    const res = await t.call('/auth/password', { new_password: 'abc' },
+      await sesi(t, 'pendek@x.id'))
+    expect(res.status).toBe(422)
+  })
+})
+
+describe('hashing kata sandi', () => {
+  it('hash berbeda untuk kata sandi sama, karena salt acak', () => {
+    expect(hashPassword('kataSandiPanjang1')).not.toBe(hashPassword('kataSandiPanjang1'))
+  })
+
+  it('kata sandi tidak pernah muncul dalam hash', () => {
+    expect(hashPassword('kataSandiPanjang1')).not.toContain('kataSandiPanjang1')
+  })
+
+  it('verifikasi menolak hash yang rusak atau kosong tanpa melempar', () => {
+    expect(verifyPassword('apa saja', undefined)).toBe(false)
+    expect(verifyPassword('apa saja', 'bukan-format-hash')).toBe(false)
+    expect(verifyPassword('apa saja', 'scrypt$$')).toBe(false)
+  })
+
+  it('kata sandi setara Unicode dinormalkan sehingga tetap cocok', () => {
+    // "é" dapat ditulis sebagai satu atau dua titik kode; keyboard berbeda
+    // menghasilkan byte berbeda untuk kata sandi yang sama bagi pengguna.
+    const h = hashPassword('sandiKu\u00e9Panjang')
+    expect(verifyPassword('sandiKue\u0301Panjang', h)).toBe(true)
   })
 })

@@ -40,6 +40,7 @@ tags:
   - { name: Reports }
   - { name: Benchmark }
   - { name: Admin }
+  - { name: AI, description: Tinjauan AI atas kualitas jawaban }
 
 security:
   - bearerAuth: []
@@ -75,6 +76,54 @@ paths:
                 properties:
                   challenge_id: { type: string, format: uuid }
                   expires_at: { type: string, format: date-time }
+
+  /auth/login:
+    x-status: implemented
+    post:
+      tags: [Auth]
+      summary: Login auditor dengan email dan kata sandi (FR-02)
+      description: |
+        Jalur masuk utama auditor. Tidak ada login pihak ketiga.
+        Email tidak dikenal dan kata sandi salah menghasilkan respons yang
+        tidak dapat dibedakan, agar endpoint ini tidak menjadi alat
+        memeriksa siapa yang terdaftar.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, maxLength: 200 }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/TokenPair' } } } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /auth/password:
+    x-status: implemented
+    post:
+      tags: [Auth]
+      summary: Tetapkan atau ganti kata sandi (FR-02)
+      description: |
+        Bila akun sudah punya kata sandi, `current_password` wajib diisi
+        sehingga sesi yang dibajak tidak cukup untuk mengunci pemilik aslinya.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [new_password]
+              properties:
+                current_password: { type: string, maxLength: 200 }
+                new_password: { type: string, maxLength: 200 }
+      responses:
+        '204': { description: Kata sandi diperbarui }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
 
   /auth/verify-otp:
     x-status: implemented
@@ -423,6 +472,87 @@ paths:
         '404': { $ref: '#/components/responses/InvitationInvalid' }
         '409': { $ref: '#/components/responses/Conflict' }
 
+  # ─────────────────────────── AI ───────────────────────────
+  /assessments/{assessmentId}/ai-review:
+    x-status: implemented
+    parameters:
+      - name: assessmentId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [AI]
+      summary: Tinjau jawaban dengan AI (FR-31)
+      description: |
+        Skor kesiapan tetap deterministik dari rubrik. Tinjauan ini hanya
+        menilai kualitas jawaban: kontradiksi, klaim tanpa bukti, dan hal yang
+        perlu dikonfirmasi auditor. Hasilnya disimpan sebagai snapshot dan
+        dipakai ulang sampai diminta menyegarkan.
+      parameters:
+        - name: refresh
+          in: query
+          schema: { type: string, enum: ['1'] }
+          description: Isi `1` untuk memaksa tinjauan ulang, mengabaikan snapshot.
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/AiReview' } } } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503':
+          description: Model AI tidak tersedia atau balasannya tidak sah
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    get:
+      tags: [AI]
+      summary: Ambil tinjauan AI tersimpan (FR-31)
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/AiReview' } } } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /ai-review/batch:
+    x-status: implemented
+    post:
+      tags: [AI]
+      summary: Tinjau antrean assessment secara massal (FR-32)
+      description: |
+        Dibutuhkan karena satu auditor dapat memegang ratusan perusahaan.
+        Assessment yang sudah pernah ditinjau dilewati, dan kegagalan pada satu
+        assessment tidak membatalkan sisa antrean.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                limit: { type: integer, minimum: 1, maximum: 50, default: 10 }
+                refresh: { type: boolean, default: false }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  reviewed: { type: integer }
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        assessment_id: { type: string, format: uuid }
+                        company_name: { type: string }
+                        status: { type: string }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '503':
+          description: Model AI belum dikonfigurasi
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+
   # ─────────────────────── Assessments (auditor) ───────────────────────
   /assessments:
     x-status: planned
@@ -701,6 +831,40 @@ components:
       content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
 
   schemas:
+    AiReview:
+      type: object
+      description: |
+        Tinjauan AI atas kualitas jawaban (FR-31). Tidak mengubah skor; skor
+        tetap dihitung deterministik dari rubrik.
+      required: [data_quality, summary, flags, next_checks, model, reviewed_at]
+      properties:
+        data_quality:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: Seberapa layak jawaban dipercaya apa adanya.
+        summary: { type: string }
+        flags:
+          type: array
+          items:
+            type: object
+            required: [question_codes, severity, issue, follow_up]
+            properties:
+              question_codes:
+                type: array
+                items: { type: string }
+                description: Kosong bila temuan bersifat menyeluruh.
+              severity: { type: string, enum: [low, medium, high] }
+              issue: { type: string }
+              follow_up:
+                type: string
+                description: Pertanyaan konfirmasi yang dapat langsung diajukan ke responden.
+        next_checks:
+          type: array
+          items: { type: string }
+        model: { type: string }
+        reviewed_at: { type: string, format: date-time }
+
     ErrorEnvelope:
       type: object
       required: [error]

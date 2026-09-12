@@ -27,7 +27,7 @@ TESTS = "\n".join(
 # None berarti sengaja belum diimplementasikan pada tahap ini.
 IMPL_MARKERS = {
     "FR-01": ["request-otp", "verify-otp", "hashOtp"],
-    "FR-02": None,  # Google OAuth: butuh kredensial eksternal, ditunda
+    "FR-02": ["/auth/login", "hashPassword", "verifyPassword"],
     "FR-03": ["verifyAccessToken", "hashRefreshToken", "revokeSessionFamily"],
     "FR-04": ["/invites", "createAuditorInvite"],
     "FR-05": ["createCompany"],
@@ -54,6 +54,8 @@ IMPL_MARKERS = {
     "FR-28": ["effectiveStatus", "EXPIRED"],
     "FR-29": ["listInvitations"],
     "FR-30": ["benchmark_available"],
+    "FR-31": ["ai-review", "reviewAnswers"],
+    "FR-32": ["ai-review/batch"],
 }
 
 # Penanda uji: FR dianggap teruji bila salah satu string ini muncul di berkas uji.
@@ -69,6 +71,9 @@ TEST_MARKERS["FR-03"] = ["FR-03"]
 TEST_MARKERS["FR-04"] = ["FR-04"]
 TEST_MARKERS["FR-17"] = ["FR-17"]
 TEST_MARKERS["FR-18"] = ["FR-18"]
+TEST_MARKERS["FR-02"] = ["FR-02"]
+TEST_MARKERS["FR-31"] = ["FR-31"]
+TEST_MARKERS["FR-32"] = ["FR-32"]
 
 rows = []
 for fr in sorted(IMPL_MARKERS, key=lambda x: int(x[3:])):
@@ -120,6 +125,10 @@ def has_route(p: str) -> bool:
         return "'/assessments/:id/share-links'" in SRC
     if p.startswith("/assessments/") and p.endswith("/report/pdf"):
         return "'/assessments/:id/report/pdf'" in SRC
+    if p.startswith("/assessments/") and p.endswith("/ai-review"):
+        return "'/assessments/:id/ai-review'" in SRC
+    if p == "/ai-review/batch":
+        return "'/ai-review/batch'" in SRC
     if p.startswith("/auth/"):
         seg = p.split("/")[-1]
         return f"'/{seg}'" in SRC

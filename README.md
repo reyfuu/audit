@@ -18,7 +18,7 @@ Owner    ──pindai QR / klik tautan──────┘
 |---|---|
 | [docs/BRD.md](docs/BRD.md) | Masalah bisnis, KPI, model undangan, risiko |
 | [docs/PRD.md](docs/PRD.md) | Persona, 21 fitur, alur undangan & QR, prinsip mobile-first |
-| [docs/FRD.md](docs/FRD.md) | FR-01..FR-30 + AC yang dapat diuji, business rule skoring |
+| [docs/FRD.md](docs/FRD.md) | FR-01..FR-32 + AC yang dapat diuji, business rule skoring |
 | [docs/TRD.md](docs/TRD.md) | Arsitektur Elysia/Bun, ERD, keamanan token, kinerja, strategi tes |
 | [DESIGN.md](DESIGN.md) | ADR, state machine, design token, wireframe, komponen |
 | [docs/QUESTION_BANK.md](docs/QUESTION_BANK.md) | Isi form: 43 pertanyaan berskor + katalog rekomendasi |
@@ -37,11 +37,13 @@ itu jujur, sehingga status tidak pernah dilaporkan lebih baik dari kenyataan.
 | Paket | Isi | Status |
 |---|---|---|
 | `packages/scoring` | Mesin skoring: 7 dimensi, hard gate, rekomendasi, DSL visibilitas, kuesioner v1 | Berjalan, 92 uji |
-| `apps/api` | Perusahaan klien, undangan + QR, jalur responden bertoken | Berjalan, 43 uji |
-| `apps/web` | Form responden mobile-first + dashboard auditor (undangan, QR, status) | Berjalan, 49 uji |
+| `packages/ai` | Klien 9router + tinjauan AI atas kualitas jawaban | Berjalan, 14 uji |
+| `apps/api` | Perusahaan klien, undangan + QR, jalur responden bertoken | Berjalan, 138 uji |
+| `apps/web` | Form responden mobile-first + dashboard auditor bersidebar (masuk, undangan, QR, status, tinjauan AI) | Berjalan, 72 uji |
 | `apps/api/src/db` | Skema Drizzle + repo PostgreSQL, migrasi siap pakai | Berjalan, 16 uji kontrak |
-| `apps/api` auth | Login email+OTP, JWT 15 menit, refresh rotatif, undangan tim | Berjalan, 32 uji |
+| `apps/api` auth | Login email+kata sandi (dan OTP), JWT 15 menit, refresh rotatif, undangan tim | Berjalan, 44 uji |
 | `apps/api` laporan | Ekspor PDF & tautan bagikan read-only | Berjalan, 19 uji |
+| `apps/api` tinjauan AI | Tinjauan kualitas jawaban per assessment dan massal | Berjalan, 13 uji |
 
 ### Laporan
 - **Unduh PDF**: dibuat dengan merender halaman laporan yang sama persis, lewat
@@ -51,7 +53,30 @@ itu jujur, sehingga status tidak pernah dilaporkan lebih baik dari kenyataan.
   masa berlaku 7/30/90 hari, menghitung berapa kali dibuka, dan menyediakan
   opsi menyembunyikan nama perusahaan.
 
+### Tinjauan AI
+Skor kesiapan **tetap deterministik** dari rubrik; AI tidak pernah mengubah angka.
+Yang dikerjakan AI adalah hal yang tidak dapat dilihat aturan: jawaban yang saling
+bertentangan, klaim matang tanpa fondasi, pola pengisian asal-asalan, dan
+pertanyaan konfirmasi yang perlu diajukan auditor sebelum laporan dikirim.
+
+- Model diakses lewat 9router (kompatibel OpenAI), default `ag/gemini-3.8-flash-medium`.
+- Hasil tinjauan disimpan sebagai snapshot, jadi membuka laporan tidak memanggil
+  model berulang; biaya tetap terkendali saat jumlah perusahaan bertambah.
+- Tersedia tinjauan massal untuk antrean yang belum pernah ditinjau, karena satu
+  auditor dapat memegang ratusan perusahaan.
+- Bila kunci belum disetel atau balasan model tidak sah, API membalas `503`
+  dengan pesan jujur, bukan hasil karangan.
+
+```bash
+AI_API_KEY=sk-xxx bun run demo:lokal      # aktifkan tinjauan AI
+# opsional: AI_BASE_URL, AI_MODEL
+```
+
 ### Keamanan autentikasi
+- Kata sandi disimpan sebagai **hash scrypt ber-salt**, tidak pernah polos.
+- Login email salah dan kata sandi salah memberi respons yang tidak dapat dibedakan.
+- Sesi web disimpan di cookie **HttpOnly SameSite=Lax**, bukan localStorage, dan
+  disegarkan diam-diam lewat refresh token rotatif saat access token kedaluwarsa.
 - Kode OTP dan refresh token disimpan sebagai **hash**, tidak pernah polos.
 - OTP: 6 digit dari CSPRNG, berlaku 10 menit, maksimal 5 percobaan.
 - Refresh token **rotatif sekali pakai**. Pemakaian ulang dianggap indikasi
@@ -65,9 +90,9 @@ itu jujur, sehingga status tidak pernah dilaporkan lebih baik dari kenyataan.
 **Alur utama sudah utuh:** auditor menerbitkan undangan → QR/tautan → owner mengisi → skor dan rekomendasi keluar.
 
 **Yang masih berupa kontrak, belum ada kodenya (10 endpoint):**
-login Google OAuth (FR-02, butuh kredensial eksternal), hapus draft (FR-13),
-riwayat & tren (FR-19), CMS bank pertanyaan (FR-20..FR-22), dan benchmark
-industri sebagai endpoint tersendiri (FR-15 dasarnya sudah ada).
+hapus draft (FR-13), riwayat & tren (FR-19), CMS bank pertanyaan (FR-20..FR-22),
+dan benchmark industri sebagai endpoint tersendiri (FR-15 dasarnya sudah ada).
+Login pihak ketiga sengaja tidak ada: auditor masuk dengan email dan kata sandi.
 
 ```bash
 python3 tools/traceability.py   # peta FRD -> implementasi -> uji
@@ -83,18 +108,22 @@ bun run demo:lokal
 Perintah itu menyalakan API, form responden, dan dashboard auditor sekaligus,
 lalu mencetak semua tautan yang dibutuhkan.
 
-**Akun demo** — `Dimas Auditor <auditor@demo.id>`. Demo masuk otomatis lewat
-alur login yang sungguhan (email + OTP), dan kode OTP dicetak ke terminal.
-Untuk mencobanya sendiri: `POST /auth/request-otp` lalu `/auth/verify-otp`.
+**Akun demo** — masuk di `http://localhost:3000/masuk` dengan
+`auditor@demo.id` / `auditorDemo123`.
 
 | Buka | Isinya |
 |---|---|
-| `http://localhost:3000/app` | Dashboard auditor: daftar undangan, status, progres |
+| `http://localhost:3000/masuk` | Halaman masuk auditor (email + kata sandi) |
+| `http://localhost:3000/app` | Ringkasan: yang berjalan, yang macet, yang siap |
+| `http://localhost:3000/app/undangan` | Daftar undangan dengan pencarian dan saringan status |
+| `http://localhost:3000/app/perusahaan` | Daftar perusahaan klien dan penambahannya |
+| `http://localhost:3000/app/tinjauan` | Tinjauan AI, termasuk tinjauan massal |
 | Tautan "COBA ISI FORM SENDIRI" | Form kosong siap diisi dari awal |
 | Tautan "LAPORAN" | Contoh laporan yang sudah jadi |
 
-Tiga perusahaan contoh disiapkan pada kondisi berbeda: belum dibuka, sedang
-diisi separuh, dan sudah selesai beserta laporannya.
+Sembilan perusahaan contoh disiapkan pada kondisi berbeda: belum dibuka, sedang
+diisi separuh, sudah selesai beserta laporannya, dan sisanya sebagai isi daftar
+agar pencarian serta paginasi terasa seperti kondisi nyata.
 
 ### Dengan penyimpanan permanen
 Secara default demo memakai memori, sehingga datanya hilang saat proses berhenti.
@@ -123,6 +152,7 @@ dijalankan ulang. Tautan serta QR yang sudah dibagikan tetap berlaku.
 ```bash
 bun run verify        # typecheck + validator dokumen + keterlacakan + semua uji
 bun run verify:pg     # semua di atas, ditambah uji terhadap PostgreSQL nyata
+bun run verify:all    # SEMUA loop termasuk pemeriksaan visual dan spike (lambat)
 bun run check:visual  # verifikasi di viewport iPhone sungguhan (Playwright)
 bun run demo          # cetak skor 3 profil bisnis contoh ke terminal
 bun run dev           # API + form saja, tanpa dashboard
@@ -166,14 +196,16 @@ bun run test     # semua uji termasuk spike Elysia
 | Konsistensi dokumen & kontrak | `python3 tools/validate_docs.py` | 96/96 lulus |
 | OpenAPI 3.1 sah | `openapi-spec-validator contracts/openapi.yaml` | VALID |
 | Mesin skoring & rekomendasi | `bun test packages/scoring` | 92/92 lulus |
-| Alur undangan, QR, dan pengisian | `bun test apps/api` | 113/113 lulus |
-| Form web & dashboard auditor | `bun test apps/web` | 49/49 lulus |
-| Tampilan di iPhone sungguhan | `bun run check:visual` | 17/17 lulus |
-| Autentikasi & skenario serangan | `bun test apps/api/test/auth.test.ts` | 32/32 lulus |
+| Klien model & tinjauan AI | `bun test packages/ai` | 14/14 lulus |
+| Alur undangan, QR, dan pengisian | `bun test apps/api` | 138/138 lulus |
+| Form web, login, dan dashboard bersidebar | `bun test apps/web` | 72/72 lulus |
+| Tampilan di iPhone + dashboard + laporan bagikan | `bun run check:visual` | 28/28 lulus |
+| Autentikasi & skenario serangan | `bun test apps/api/test/auth.test.ts` | 44/44 lulus |
 | Tautan bagikan & ekspor PDF | `bun test apps/api/test/report.test.ts` | 19/19 lulus |
+| Tinjauan AI & kepemilikan data | `bun test apps/api/test/ai-review.test.ts` | 13/13 lulus |
 | Kontrak penyimpanan (memori & Postgres) | `bun run test:pg` | 132/132 lulus |
 | Type safety (strict) | `bunx tsc --noEmit` | bersih |
-| Keterlacakan FRD → kode → uji | `python3 tools/traceability.py` | 24 siap, 6 ditunda, 0 bermasalah |
+| Keterlacakan FRD → kode → uji | `python3 tools/traceability.py` | 27 siap, 5 ditunda, 0 bermasalah |
 | Akurasi klaim README itu sendiri | `python3 tools/verify_readme.py` | 10/10 terverifikasi |
 
 Angka di tabel ini tidak ditulis tangan begitu saja: `tools/verify_readme.py`
@@ -186,6 +218,6 @@ PostgreSQL nyata, sehingga keduanya dijamin berperilaku identik. Uji persistensi
 memakai koneksi baru di tiap tahap untuk meniru server yang di-restart, dan
 membuktikan jawaban owner tidak hilang.
 
-Pemeriksaan visual menjalankan Chromium pada viewport iPhone 13 dan mengukur hal yang tidak dapat dibuktikan uji string: target sentuh terhitung ≥ 44px, tidak ada scroll horizontal, kontras 17.7:1, dan form benar-benar selesai dengan 43 ketukan. Alur juga diuji ulang dengan `javaScriptEnabled: false`.
+Pemeriksaan visual menjalankan Chromium pada viewport iPhone 13 dan mengukur hal yang tidak dapat dibuktikan uji string: target sentuh terhitung ≥ 44px, tidak ada scroll horizontal, kontras 17.7:1, dan form benar-benar selesai dengan 43 ketukan. Alur juga diuji ulang dengan `javaScriptEnabled: false`. Dashboard auditor, halaman masuk, sidebar, QR, dan laporan bagikan ikut diperiksa, termasuk membuka laporan dari konteks browser yang sama sekali tanpa sesi.
 
 QR code diuji dengan **mendekodenya kembali** memakai `jsqr`, lalu memastikan isinya sama persis dengan `invitation_url` dan token hasil pindai benar-benar membuka form perusahaan yang tepat. Uji scoring mencakup property test determinisme (200 profil acak) dan monotonicity (150 profil).

@@ -172,8 +172,9 @@ check("R18c","Token tidak valid/dicabut mengembalikan 404 netral (FR-25 AC3)", o
 
 # ── R19 model auth v2: jalur responden /f/{token} tidak memakai Bearer
 # (token undangan adalah kredensialnya), sisanya wajib Bearer.
-# /auth/logout dan /me tetap butuh Bearer meski berada di bawah /auth.
-AUTHENTICATED_AUTH_PATHS = {"/auth/me", "/auth/invites"}
+# /auth/me, /auth/invites, dan /auth/password tetap butuh Bearer meski berada
+# di bawah /auth: ketiganya bekerja atas nama auditor yang sudah masuk.
+AUTHENTICATED_AUTH_PATHS = {"/auth/me", "/auth/invites", "/auth/password"}
 token_auth, priv_ok = [], []
 for path, item in SPEC["paths"].items():
     for method, op in item.items():

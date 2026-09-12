@@ -40,6 +40,11 @@ export const auditors = pgTable('auditors', {
   email: text('email').notNull(),
   name: text('name').notNull(),
   role: auditorRole('role').notNull().default('auditor'),
+  /**
+   * Hash kata sandi (argon2id). Nullable karena akun bisa lahir dari undangan
+   * dan baru menetapkan kata sandi saat undangan diterima (FR-02).
+   */
+  passwordHash: text('password_hash'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [uniqueIndex('auditors_email_key').on(t.email)])
 
@@ -70,6 +75,11 @@ export const assessments = pgTable('assessments', {
   serverRevision: integer('server_revision').notNull().default(0),
   /** Snapshot hasil skoring; dibaca apa adanya saat menampilkan laporan (ADR-004). */
   scoreSnapshot: jsonb('score_snapshot'),
+  /**
+   * Tinjauan AI atas jawaban (FR-31). Disimpan sebagai snapshot agar hasilnya
+   * stabil dan tidak memanggil model ulang setiap kali laporan dibuka.
+   */
+  aiReview: jsonb('ai_review'),
 }, (t) => [index('assessments_company_idx').on(t.companyId, t.status)])
 
 export const answers = pgTable('answers', {

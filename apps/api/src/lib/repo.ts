@@ -32,6 +32,11 @@ export interface AuditorRow {
   email: string
   name: string
   role: AuditorRole
+  /**
+   * Hash kata sandi; undefined bila akun belum pernah menetapkannya.
+   * Hanya hash yang disimpan, tidak pernah kata sandi polos (FR-02).
+   */
+  password_hash?: string
 }
 
 export interface CompanyRow {
@@ -58,6 +63,8 @@ export interface AssessmentRow {
   server_revision: number
   answers: Map<string, Answer & { answered_at: string }>
   score_snapshot?: unknown
+  /** Snapshot tinjauan AI (FR-31); disimpan agar tidak memanggil model berulang. */
+  ai_review?: unknown
 }
 
 export interface InvitationRow {
@@ -133,6 +140,8 @@ export interface Repo {
   createAuditor(input: Omit<AuditorRow, 'id'>): Promise<AuditorRow>
   getAuditor(id: string): Promise<AuditorRow | undefined>
   getAuditorByEmail(email: string): Promise<AuditorRow | undefined>
+  /** Menetapkan atau mengganti kata sandi auditor (FR-02). */
+  setAuditorPassword(id: string, passwordHash: string): Promise<void>
 
   // otp
   createOtpChallenge(input: Omit<OtpChallengeRow, 'created_at'>): Promise<OtpChallengeRow>
@@ -209,6 +218,10 @@ export function createMemoryRepo(): Repo {
       const e = email.toLowerCase()
       for (const a of auditors.values()) if (a.email.toLowerCase() === e) return a
       return undefined
+    },
+    async setAuditorPassword(id, passwordHash) {
+      const a = auditors.get(id)
+      if (a) auditors.set(id, { ...a, password_hash: passwordHash })
     },
 
     async createOtpChallenge(input) {

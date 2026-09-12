@@ -25,6 +25,7 @@
       "version": "1.0.0",
       "dependencies": {
         "@elysiajs/openapi": "^1.4.11",
+        "@siapai/ai": "workspace:*",
         "@siapai/scoring": "workspace:*",
         "elysia": "^1.4.30",
       },
@@ -33,9 +34,14 @@
       "name": "@siapai/web",
       "version": "1.0.0",
       "dependencies": {
+        "@siapai/ai": "workspace:*",
         "@siapai/scoring": "workspace:*",
         "elysia": "^1.4.30",
       },
+    },
+    "packages/ai": {
+      "name": "@siapai/ai",
+      "version": "1.0.0",
     },
     "packages/scoring": {
       "name": "@siapai/scoring",
@@ -104,6 +110,8 @@
     "@esbuild/win32-ia32": ["@esbuild/win32-ia32@0.25.12", "", { "os": "win32", "cpu": "ia32" }, "sha512-HkqnmmBoCbCwxUKKNPBixiWDGCpQGVsrQfJoVGYLPT41XWF8lHuE5N6WhVia2n4o5QK5M4tYr21827fNhi4byQ=="],
 
     "@esbuild/win32-x64": ["@esbuild/win32-x64@0.25.12", "", { "os": "win32", "cpu": "x64" }, "sha512-alJC0uCZpTFrSL0CCDjcgleBXPnCrEAhTBILpeAp7M/OFgoqtAetfBzX0xM00MUsVVPpVjlPuMbREqnZCXaTnA=="],
+
+    "@siapai/ai": ["@siapai/ai@workspace:packages/ai"],
 
     "@siapai/api": ["@siapai/api@workspace:apps/api"],
 

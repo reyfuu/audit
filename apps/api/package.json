@@ -2,10 +2,14 @@
   "name": "@siapai/api",
   "version": "1.0.0",
   "type": "module",
-  "scripts": { "dev": "bun --watch src/server.ts", "start": "bun src/server.ts" },
+  "scripts": {
+    "dev": "bun --watch src/server.ts",
+    "start": "bun src/server.ts"
+  },
   "dependencies": {
     "@siapai/scoring": "workspace:*",
     "elysia": "^1.4.30",
-    "@elysiajs/openapi": "^1.4.11"
+    "@elysiajs/openapi": "^1.4.11",
+    "@siapai/ai": "workspace:*"
   }
 }

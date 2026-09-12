@@ -5,11 +5,18 @@
  * ukuran target sentuh terhitung, tidak ada scroll horizontal, tombol berada
  * dalam jangkauan, dan alur benar-benar dapat diselesaikan dengan mengetuk.
  *
- * Jalankan: bun tools/visual-check.ts
+ * Jalankan: bun run check:visual
  */
 import { chromium, devices } from 'playwright'
-import { createApp } from '../apps/api/src/app'
-import { createWeb } from '../apps/web/src/web'
+import { createApp } from '../../api/src/app'
+import { createWebApp } from '../src/app'
+import { hashPassword } from '../../api/src/lib/auth'
+
+/**
+ * Alat ini memakai alur login sungguhan, bukan token pintasan: browser benar-benar
+ * mengisi halaman /masuk, sehingga kerusakan pada sesi ikut ketahuan di sini.
+ */
+const SANDI = 'sandiVisual123'
 
 const API_PORT = 3101
 const WEB_PORT = 3100
@@ -17,21 +24,44 @@ const WEB_BASE = `http://localhost:${WEB_PORT}`
 
 const { app: api, repo } = createApp({ baseUrl: WEB_BASE })
 api.listen(API_PORT)
-const web = createWeb({
-  api: (p, init) => api.handle(new Request(`http://localhost:${API_PORT}${p}`, init)),
-})
-web.listen(WEB_PORT)
+const raw = (p: string, init: RequestInit = {}, token?: string) =>
+  api.handle(new Request(`http://localhost:${API_PORT}${p}`, {
+    ...init,
+    headers: { ...(init.headers ?? {}), ...(token ? { authorization: `Bearer ${token}` } : {}) },
+  }))
 
-const auditor = await repo.createAuditor({ email: 'd@x.id', name: 'Dimas Auditor', role: 'auditor' })
+const auditor = await repo.createAuditor({
+  email: 'd@x.id', name: 'Dimas Auditor', role: 'auditor', password_hash: hashPassword(SANDI),
+})
+
+/** Login kata sandi, persis seperti auditor sungguhan. */
+const TOKEN = await (async () => {
+  const res = await raw('/auth/login', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: auditor.email, password: SANDI }),
+  })
+  return (await res.json() as { access_token: string }).access_token
+})()
+
+// Dashboard auditor ikut disajikan agar pemeriksaan visual mencakup
+// seluruh permukaan produk, bukan hanya form responden.
+createWebApp({ raw, publicBase: WEB_BASE }).listen(WEB_PORT)
+
 const company = await repo.createCompany({
   owner_auditor_id: auditor.id, name: 'PT Maju Jaya Retail',
   industry: 'retail_ecommerce', employee_band: '50_99', country: 'ID',
 })
-const inv = await (await api.handle(new Request(`http://localhost:${API_PORT}/invitations`, {
+const inv = await (await raw('/invitations', {
   method: 'POST',
-  headers: { 'content-type': 'application/json', authorization: `Bearer user:${auditor.id}` },
+  headers: { 'content-type': 'application/json' },
   body: JSON.stringify({ company_id: company.id }),
-}))).json() as { token: string }
+}, TOKEN)).json() as { token?: string; error?: { message?: string } }
+
+if (!inv.token) {
+  console.error('Gagal menerbitkan undangan:', JSON.stringify(inv))
+  process.exit(1)
+}
 
 const results: { name: string; ok: boolean; detail: string }[] = []
 const check = (name: string, ok: boolean, detail: string) => {
@@ -141,16 +171,16 @@ check('Halaman hasil tidak scroll horizontal', scrollW2 <= vw + 1,
 // ── Tanpa JavaScript sama sekali
 const noJs = await browser.newContext({ ...devices['iPhone 13'], javaScriptEnabled: false })
 const p2 = await noJs.newPage()
-const inv2 = await (await api.handle(new Request(`http://localhost:${API_PORT}/invitations`, {
+const inv2 = await (await raw('/invitations', {
   method: 'POST',
-  headers: { 'content-type': 'application/json', authorization: `Bearer user:${auditor.id}` },
+  headers: { 'content-type': 'application/json' },
   body: JSON.stringify({
     company_id: (await repo.createCompany({
       owner_auditor_id: auditor.id, name: 'CV Tanpa JS',
       industry: 'fnb', employee_band: '10_49', country: 'ID',
     })).id,
   }),
-}))).json() as { token: string }
+}, TOKEN)).json() as { token: string }
 
 await p2.goto(`${WEB_BASE}/f/${inv2.token}/isi`)
 await p2.locator('.opt input').last().click()
@@ -170,6 +200,81 @@ await p3.goto(`${WEB_BASE}/f/${inv2.token}/isi`)
 const sw3 = await p3.evaluate(() => document.documentElement.scrollWidth)
 check('Tetap rapi di layar 320px', sw3 <= 321, `konten ${sw3}px`)
 await p3.screenshot({ path: '/tmp/siapai-6-320px.png', fullPage: true })
+
+// ── Dashboard auditor di layar laptop
+const desktop = await browser.newContext({ viewport: { width: 1280, height: 900 } })
+const p4 = await desktop.newPage()
+
+// Masuk lewat halaman login sungguhan; ini juga menguji cookie sesi.
+await p4.goto(`${WEB_BASE}/app`, { waitUntil: 'networkidle' })
+check('Dashboard mengarahkan pengunjung tanpa sesi ke halaman masuk',
+  p4.url().includes('/masuk'), `berakhir di ${new URL(p4.url()).pathname}`)
+await p4.fill('#email', auditor.email)
+await p4.fill('#password', SANDI)
+await p4.getByRole('button', { name: 'Masuk' }).click()
+await p4.waitForLoadState('networkidle')
+check('Login membawa auditor ke dashboard',
+  p4.url().includes('/app'), `berakhir di ${new URL(p4.url()).pathname}`)
+await p4.screenshot({ path: '/tmp/siapai-10-masuk.png', fullPage: true })
+
+const sidebarItems = await p4.locator('.side a.nav').count()
+check('Sidebar navigasi tampil di dashboard', sidebarItems >= 4,
+  `${sidebarItems} item navigasi`)
+
+await p4.goto(`${WEB_BASE}/app/undangan`, { waitUntil: 'networkidle' })
+await p4.screenshot({ path: '/tmp/siapai-7-dashboard.png', fullPage: true })
+
+check('Dashboard menampilkan daftar undangan',
+  await p4.getByText('Undangan audit').isVisible(), 'judul tampil')
+check('Status undangan terbaca manusia',
+  (await p4.locator('.pill').count()) > 0,
+  `${await p4.locator('.pill').count()} label status`)
+
+// Pilih undangan yang benar-benar sudah selesai. Mengambil yang pertama saja
+// rapuh: urutan daftar mengikuti waktu terbit, bukan status.
+const tautanUndangan = await p4.locator('a[href^="/app/undangan/"]').evaluateAll(
+  (els) => els.map((e) => (e as HTMLAnchorElement).getAttribute('href')!))
+let detailDipilih = tautanUndangan[0]!
+for (const href of tautanUndangan) {
+  await p4.goto(`${WEB_BASE}${href}`, { waitUntil: 'networkidle' })
+  if (await p4.getByText('Hasil sudah tersedia').count() > 0) { detailDipilih = href; break }
+}
+await p4.goto(`${WEB_BASE}${detailDipilih}`, { waitUntil: 'networkidle' })
+await p4.screenshot({ path: '/tmp/siapai-8-detail.png', fullPage: true })
+
+const qr = p4.locator('img.qr')
+check('QR tampil di halaman detail', await qr.isVisible(), 'gambar QR ada')
+const qrBox = await qr.boundingBox()
+check('QR cukup besar untuk dipindai dari layar',
+  Boolean(qrBox && qrBox.width >= 150),
+  `${Math.round(qrBox?.width ?? 0)}px`)
+
+const punyaHasil = await p4.getByText('Hasil sudah tersedia').count() > 0
+check('Halaman detail menampilkan blok hasil untuk audit yang selesai',
+  punyaHasil, punyaHasil ? 'blok hasil tampil' : 'belum selesai, dilewati')
+
+if (punyaHasil) {
+  // Tautan bagikan dibuat lewat tombol, seperti auditor sungguhan.
+  await p4.getByRole('button', { name: 'Buat tautan bagikan' }).click()
+  await p4.waitForLoadState('networkidle')
+  const kotak = await p4.locator('.copybox').last().textContent()
+  const urlBagikan = (kotak ?? '').trim()
+  check('Tombol buat tautan bagikan menghasilkan URL',
+    /\/l\/[A-Za-z0-9_-]{20,}/.test(urlBagikan), urlBagikan.slice(0, 48))
+
+  // Laporan dibuka di konteks tanpa sesi auditor sama sekali.
+  const anonim = await browser.newContext()
+  const p5 = await anonim.newPage()
+  await p5.goto(urlBagikan, { waitUntil: 'networkidle' })
+  await p5.screenshot({ path: '/tmp/siapai-9-bagikan.png', fullPage: true })
+  check('Laporan yang dibagikan terbuka tanpa akun',
+    (await p5.locator('.verdict .score').count()) > 0,
+    `skor: ${await p5.locator('.verdict .score').textContent()}`)
+  check('Laporan bagikan memuat ketujuh dimensi',
+    await p5.locator('.dim').count() === 7,
+    `${await p5.locator('.dim').count()} dimensi`)
+  await anonim.close()
+}
 
 await browser.close()
 

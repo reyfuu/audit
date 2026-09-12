@@ -2,26 +2,29 @@
  * Demo lokal SiapAI.
  *
  * Menjalankan API, form responden, dan dashboard auditor dalam satu proses,
- * lengkap dengan akun demo dan tiga perusahaan contoh pada kondisi berbeda,
+ * lengkap dengan akun demo dan beberapa perusahaan contoh pada kondisi berbeda,
  * sehingga alur dapat dicoba tanpa persiapan apa pun.
  *
  * Jalankan: bun run demo:lokal
  */
 import { QUESTIONNAIRE_V1 as QN, type Question } from '@siapai/scoring'
+import { aiConfigFromEnv, createChatClient } from '@siapai/ai'
 import { createApp } from '../../api/src/app'
 import { createStorage } from '../../api/src/db'
-import { createWeb } from '../src/web'
-import { auditorModule } from '../src/auditor'
-import { Elysia } from 'elysia'
+import { hashPassword } from '../../api/src/lib/auth'
+import { createWebApp } from '../src/app'
 
 const API_PORT = Number(process.env.API_PORT ?? 3001)
 const WEB_PORT = Number(process.env.PORT ?? 3000)
 const WEB_BASE = process.env.PUBLIC_BASE_URL ?? `http://localhost:${WEB_PORT}`
 
+/** Kata sandi demo; disebutkan terbuka karena memang untuk dicoba lokal. */
+const DEMO_EMAIL = 'auditor@demo.id'
+const DEMO_PASSWORD = 'auditorDemo123'
+
 // Postgres bila DATABASE_URL ada, selain itu memori.
 const storage = createStorage()
-/** Kode OTP demo ditampung di sini agar dapat dicetak ke terminal. */
-const otpTerakhir = new Map<string, string>()
+const aiCfg = aiConfigFromEnv()
 const { app: api, repo } = createApp({
   repo: storage.repo,
   baseUrl: WEB_BASE,
@@ -31,8 +34,8 @@ const { app: api, repo } = createApp({
     const { renderPdf } = await import('../../api/src/lib/pdf')
     return renderPdf(url)
   },
+  ...(aiCfg ? { chat: createChatClient(aiCfg) } : {}),
   sendOtp: (email, code) => {
-    otpTerakhir.set(email, code)
     console.log(`\n  [OTP] ${email} → ${code}\n`)
   },
 })
@@ -42,61 +45,46 @@ api.listen(API_PORT)
 const auditor = await ambilAtauBuatAuditor()
 
 async function ambilAtauBuatAuditor() {
-  const email = 'auditor@demo.id'
-  if (storage.kind === 'postgres') {
-    const { db, client } = await import('../../api/src/db/pg-repo')
-      .then(async (m) => m.createDb(process.env.DATABASE_URL!, { max: 1 }))
-    const s = await import('../../api/src/db/schema')
-    const { eq } = await import('drizzle-orm')
-    const [ada] = await db.select().from(s.auditors).where(eq(s.auditors.email, email))
-    await client.end()
-    if (ada) return { id: ada.id, email: ada.email, name: ada.name, role: ada.role }
+  const ada = await repo.getAuditorByEmail(DEMO_EMAIL)
+  if (ada) {
+    // Kata sandi disetel ulang agar demo selalu dapat dimasuki, termasuk pada
+    // basis data lama yang akunnya dibuat sebelum fitur kata sandi ada.
+    await repo.setAuditorPassword(ada.id, hashPassword(DEMO_PASSWORD))
+    return ada
   }
-  return repo.createAuditor({ email, name: 'Dimas Auditor', role: 'auditor_admin' })
+  return repo.createAuditor({
+    email: DEMO_EMAIL, name: 'Dimas Auditor', role: 'auditor_admin',
+    password_hash: hashPassword(DEMO_PASSWORD),
+  })
 }
 
-/**
- * Sesi auditor demo diperoleh lewat alur login OTP yang sungguhan, bukan
- * token pintasan, sehingga jalur autentikasi ikut tercoba setiap kali demo
- * dijalankan.
- */
-async function masukSebagaiAuditor(): Promise<string> {
-  const minta = await api.handle(new Request(`http://localhost:${API_PORT}/auth/request-otp`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ email: auditor.email }),
-  }))
-  const { challenge_id } = await minta.json() as { challenge_id: string }
-  const code = otpTerakhir.get(auditor.email)!
-  const verif = await api.handle(new Request(`http://localhost:${API_PORT}/auth/verify-otp`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ challenge_id, code }),
-  }))
-  const sesi = await verif.json() as { access_token: string }
-  return sesi.access_token
-}
-
-const accessToken = await masukSebagaiAuditor()
-
-/** Pemanggil API untuk dashboard; memakai access token hasil login. */
-const callApi = (path: string, init: RequestInit = {}) =>
+/** Pemanggil API mentah untuk web; token sesi disuntikkan per permintaan. */
+const raw = (path: string, init: RequestInit = {}, token?: string) =>
   api.handle(new Request(`http://localhost:${API_PORT}${path}`, {
     ...init,
-    headers: { ...(init.headers ?? {}), authorization: `Bearer ${accessToken}` },
+    headers: { ...(init.headers ?? {}), ...(token ? { authorization: `Bearer ${token}` } : {}) },
   }))
 
-/** Pemanggil API untuk form responden; tanpa kredensial, sesuai model token. */
-const callPublic = (path: string, init?: RequestInit) =>
-  api.handle(new Request(`http://localhost:${API_PORT}${path}`, init))
+/**
+ * Sesi auditor demo diperoleh lewat login kata sandi yang sungguhan, sehingga
+ * jalur autentikasi ikut tercoba setiap kali demo dijalankan.
+ */
+const accessToken = await (async () => {
+  const res = await raw('/auth/login', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: DEMO_EMAIL, password: DEMO_PASSWORD }),
+  })
+  if (!res.ok) throw new Error(`Login demo gagal: ${res.status}`)
+  return (await res.json() as { access_token: string }).access_token
+})()
 
-new Elysia()
-  .get('/', () => new Response(null, { status: 303, headers: { location: '/app' } }))
-  .use(auditorModule({ api: callApi, publicBase: WEB_BASE }))
-  .use(createWeb({ api: callPublic }))
-  .listen(WEB_PORT)
+const callApi = (path: string, init: RequestInit = {}) => raw(path, init, accessToken)
+const callPublic = (path: string, init?: RequestInit) => raw(path, init)
 
-// ── Tiga perusahaan contoh dengan kondisi berbeda
+createWebApp({ raw, publicBase: WEB_BASE }).listen(WEB_PORT)
+
+// ── Perusahaan contoh dengan kondisi berbeda
 async function issue(companyId: string, recipient: string) {
   const r = await callApi('/invitations', {
     method: 'POST',
@@ -205,25 +193,35 @@ const invSelesai = await issue(selesai.id, 'Pak Hendra')
 await isiPenuh(invSelesai.token, 'rintisan')
 const hasil = await (await callPublic(`/f/${invSelesai.token}/submit`, { method: 'POST' })).json()
 
+// 4. Beberapa perusahaan tambahan agar daftar, pencarian, dan halaman
+//    terasa seperti kondisi nyata dengan banyak klien.
+const NAMA_TAMBAHAN = [
+  ['PT Anugerah Tekstil', 'manufacturing', '100_499'],
+  ['CV Karya Bangun', 'construction_property', '50_99'],
+  ['PT Nusantara Farma', 'healthcare', '100_499'],
+  ['Koperasi Tani Makmur', 'agriculture', '10_49'],
+  ['PT Digital Kreatif', 'media_creative', '10_49'],
+  ['PT Bahari Logistik', 'logistics', '500_999'],
+] as const
+for (const [nama, industri, band] of NAMA_TAMBAHAN) {
+  const c = await mk(nama, industri, band)
+  await issue(c.id, 'Perwakilan')
+}
+
 const garis = '─'.repeat(64)
 console.log(`
 ${garis}
   SiapAI — demo lokal siap dipakai
 ${garis}
 
-  AKUN DEMO
-    Auditor   : ${auditor.name} <${auditor.email}>
-    Login     : email + OTP (FR-01). Demo sudah masuk otomatis lewat alur
-                yang sama; kode OTP dicetak ke terminal ini.
-                Coba sendiri: POST /auth/request-otp lalu /auth/verify-otp.
-
-  BUKA DASHBOARD AUDITOR
-    ${WEB_BASE}/app
+  MASUK KE DASHBOARD
+    ${WEB_BASE}/masuk
+    Email      : ${DEMO_EMAIL}
+    Kata sandi : ${DEMO_PASSWORD}
 
   COBA ISI FORM SENDIRI (belum diisi)
     Perusahaan: ${baru.name}
     Tautan    : ${invBaru.invitation_url}
-    QR        : buka ${WEB_BASE}/app/undangan/${invBaru.id}
 
   CONTOH SEDANG DIISI
     ${separuh.name} — lihat statusnya di dashboard
@@ -232,6 +230,11 @@ ${garis}
     ${selesai.name}
     Skor ${hasil.total_score}/100 · ${hasil.verdict}
     Laporan   : ${WEB_BASE}/f/${invSelesai.token}/hasil
+
+  TINJAUAN AI
+    ${aiCfg
+      ? `Aktif · model ${aiCfg.model}\n                Buka ${WEB_BASE}/app/tinjauan lalu jalankan tinjauan.`
+      : 'Nonaktif. Setel AI_API_KEY untuk mengaktifkan, mis.\n                AI_API_KEY=sk-xxx bun run demo:lokal'}
 
   MENCOBA DARI HP
     1. Buka ${WEB_BASE}/app/undangan/${invBaru.id} di laptop

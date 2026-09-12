@@ -27,7 +27,10 @@ Matriks izin (RBAC) diberlakukan di layer API, bukan hanya UI.
 - AC2: OTP salah 5x → akun terkunci 15 menit.
 - AC3: Hanya email yang diundang `auditor_admin` atau terdaftar di allowlist yang dapat mendaftar. Publik tidak bisa membuat akun sendiri.
 
-**FR-02 Login Google OAuth2.** AC: Email sama dengan akun existing → akun ditautkan, bukan duplikat.
+**FR-02 Login email + kata sandi.** Jalur masuk utama auditor; tidak ada login pihak ketiga (Google OAuth dihapus dari lingkup, lihat ADR-009).
+- AC1: Kata sandi disimpan hanya sebagai hash ber-salt, tidak pernah polos.
+- AC2: Email tidak dikenal dan kata sandi salah menghasilkan respons yang tidak dapat dibedakan.
+- AC3: Kata sandi minimal 10 karakter; mengganti kata sandi menuntut kata sandi lama bila sudah ada.
 
 **FR-03 Sesi.** AC: Access token JWT 15 menit, refresh token 30 hari rotatif; logout mencabut refresh token.
 
@@ -151,6 +154,19 @@ Pertanyaan tidak visible dikeluarkan dari pembilang dan penyebut (tidak dihukum)
 - AC1: Seluruh bagian laporan dapat diakses oleh responden dan auditor tanpa pembayaran.
 - AC2: Kode error `PAYMENT_REQUIRED` dan status HTTP `402` tidak boleh muncul di mana pun dalam sistem.
 
+## 8b. Modul Tinjauan AI
+
+**FR-31 Tinjauan AI atas jawaban satu assessment.** Skor tetap deterministik dari rubrik; AI hanya menilai kualitas jawaban.
+- AC1: Hanya assessment berstatus `SCORED` yang dapat ditinjau; selain itu `409`.
+- AC2: Hasil tinjauan disimpan sebagai snapshot dan dipakai ulang sampai diminta tinjau ulang secara eksplisit.
+- AC3: Bila model tidak dikonfigurasi atau balasannya tidak sah, API membalas `503` dengan pesan jujur, bukan hasil karangan.
+- AC4: Assessment milik auditor lain mengembalikan `404`.
+
+**FR-32 Tinjauan massal.** Dibutuhkan karena satu auditor dapat memegang ratusan perusahaan.
+- AC1: Hanya assessment milik auditor pemanggil yang diproses.
+- AC2: Assessment yang sudah pernah ditinjau dilewati kecuali diminta menyegarkan.
+- AC3: Kegagalan pada satu assessment tidak membatalkan sisa antrean.
+
 ## 9. Enum Terkendali
 `industry`: `manufacturing, retail_ecommerce, fnb, logistics, financial_services, healthcare, education, professional_services, construction_property, agriculture, media_creative, technology, government_public, other`
 `employee_band`: `1_9, 10_49, 50_99, 100_499, 500_999, 1000_plus`
@@ -188,3 +204,5 @@ Kode: `UNAUTHENTICATED, FORBIDDEN, NOT_FOUND, CONFLICT, INCOMPLETE, INVALID_ANSW
 | FR-14 | BA4 | Unit: minimal 3 rekomendasi untuk semua profil, relevansi, kuota horizon |
 | FR-16..FR-18 | G4, F11, F14 | Snapshot PDF versus HTML |
 | FR-15 | F21 | Unit: fallback saat sampel < 30 |
+| FR-02 | G1 | Integrasi: login benar/salah, ganti kata sandi, cookie sesi di web |
+| FR-31, FR-32 | BA3 | Integrasi: tinjauan dengan model stub, caching snapshot, 503 saat model absen |

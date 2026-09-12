@@ -8,7 +8,8 @@ import { Elysia, t } from 'elysia'
 import {
   OTP_MAX_ATTEMPTS, OTP_TTL_MS, REFRESH_TTL_MS,
   generateOtp, generateRefreshToken, hashOtp, hashRefreshToken,
-  issueAccessToken, normalizeEmail, otpMatches,
+  hashPassword, issueAccessToken, normalizeEmail, otpMatches,
+  passwordIssue, verifyPassword,
 } from '../lib/auth'
 import { err } from '../lib/errors'
 import { authGuard } from '../lib/guards'
@@ -32,6 +33,34 @@ export function authModule({ repo, now = () => new Date(), sendOtp }: AuthDeps) 
   })
 
   return new Elysia({ prefix: '/auth' })
+    // ── FR-02 login kata sandi
+    //
+    // Jalur masuk utama auditor. Tidak ada login pihak ketiga: satu jalur yang
+    // dipahami penuh lebih aman daripada dua jalur yang setengah dimengerti.
+    .post(
+      '/login',
+      async ({ body, status }) => {
+        const email = normalizeEmail(body.email)
+        const auditor = await repo.getAuditorByEmail(email)
+        // Pesan yang sama untuk email salah maupun kata sandi salah, agar
+        // endpoint ini tidak menjadi alat memeriksa siapa yang terdaftar.
+        const gagal = () =>
+          status(401, err('UNAUTHENTICATED', 'Email atau kata sandi salah'))
+        if (!auditor || !verifyPassword(body.password, auditor.password_hash)) {
+          return gagal()
+        }
+        return status(200, await terbitkanSesi(auditor.id, auditor.role, crypto.randomUUID()))
+      },
+      {
+        body: t.Object({
+          email: t.String({ format: 'email' }),
+          password: t.String({ minLength: 1, maxLength: 200 }),
+        }),
+        response: { 200: S.TokenPair, 401: S.ErrorEnvelope, 422: S.ErrorEnvelope },
+        detail: { tags: ['Auth'], summary: 'Login auditor dengan email dan kata sandi' },
+      },
+    )
+
     // ── FR-01 minta OTP
     .post(
       '/request-otp',
@@ -194,6 +223,35 @@ export function authModule({ repo, now = () => new Date(), sendOtp }: AuthDeps) 
       {
         response: { 200: S.Me, 401: S.ErrorEnvelope },
         detail: { tags: ['Auth'], summary: 'Profil auditor yang sedang masuk' },
+      },
+    )
+
+    // ── FR-02 tetapkan atau ganti kata sandi
+    .post(
+      '/password',
+      async ({ body, user, status }) => {
+        const auditor = await repo.getAuditor(user!.id)
+        if (!auditor) return status(401, err('UNAUTHENTICATED', 'Akun tidak ditemukan'))
+        // Bila sudah punya kata sandi, wajib membuktikan yang lama. Sesi yang
+        // dibajak tidak boleh cukup untuk mengunci pemilik aslinya.
+        if (auditor.password_hash
+            && !verifyPassword(body.current_password ?? '', auditor.password_hash)) {
+          return status(401, err('UNAUTHENTICATED', 'Kata sandi saat ini salah'))
+        }
+        const masalah = passwordIssue(body.new_password)
+        if (masalah) return status(422, err('INVALID_ANSWER_TYPE', masalah))
+        await repo.setAuditorPassword(auditor.id, hashPassword(body.new_password))
+        return status(204, undefined)
+      },
+      {
+        body: t.Object({
+          current_password: t.Optional(t.String({ maxLength: 200 })),
+          new_password: t.String({ maxLength: 200 }),
+        }),
+        response: {
+          204: t.Void(), 401: S.ErrorEnvelope, 422: S.ErrorEnvelope,
+        },
+        detail: { tags: ['Auth'], summary: 'Tetapkan atau ganti kata sandi' },
       },
     )
 
