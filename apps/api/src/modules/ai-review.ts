@@ -15,6 +15,13 @@ import type { AssessmentRow, Repo } from '../lib/repo'
 import * as S from '../lib/schemas'
 import { answersOf } from './progress'
 
+/**
+ * Banyaknya tinjauan yang berjalan bersamaan pada mode massal.
+ * Dipilih konservatif: cukup memangkas waktu tunggu, tetapi tidak agresif
+ * sehingga penyedia model membalas dengan rate limit.
+ */
+export const BATCH_CONCURRENCY = 4
+
 export interface AiReviewDeps {
   repo: Repo
   /** Klien model; bila tidak ada, endpoint melapor 503 secara jujur. */
@@ -152,25 +159,51 @@ export function aiReviewModule({ repo, chat, now = () => new Date() }: AiReviewD
         const invitations = await repo.listInvitations(user!.id)
         const byCompany = new Map(companies.map((c) => [c.id, c]))
 
-        const hasil: { assessment_id: string; company_name: string; status: string }[] = []
+        // Kumpulkan antrean lebih dulu, baru dikerjakan.
+        const antre: { a: AssessmentRow; c: { name: string; industry: string; employee_band: string } }[] = []
         for (const inv of invitations) {
-          if (hasil.length >= batas) break
+          if (antre.length >= batas) break
           const a = await repo.getAssessment(inv.assessment_id)
           const c = byCompany.get(inv.company_id)
           if (!a || !c || !a.score_snapshot) continue
           if (a.ai_review && !body?.refresh) continue
-          try {
-            await jalankan(a, c)
-            hasil.push({ assessment_id: a.id, company_name: c.name, status: 'reviewed' })
-          } catch (e: unknown) {
-            // Satu kegagalan model tidak boleh membatalkan seluruh antrean.
-            hasil.push({
-              assessment_id: a.id,
-              company_name: c.name,
-              status: e instanceof AiError ? `failed: ${e.message}` : 'failed',
-            })
-          }
+          antre.push({ a, c })
         }
+
+        /**
+         * Dikerjakan beberapa sekaligus. Satu tinjauan memakan beberapa detik,
+         * sehingga antrean 25 secara berurutan berarti auditor menunggu
+         * menit-menit di depan layar. Konkurensi dibatasi agar tidak
+         * membanjiri penyedia model dan tetap ramah pada rate limit.
+         */
+        const hasil: { assessment_id: string; company_name: string; status: string }[] = []
+        const pekerja = Array.from(
+          { length: Math.min(BATCH_CONCURRENCY, antre.length) },
+          async () => {
+            for (;;) {
+              const tugas = antre.shift()
+              if (!tugas) return
+              try {
+                await jalankan(tugas.a, tugas.c)
+                hasil.push({
+                  assessment_id: tugas.a.id, company_name: tugas.c.name, status: 'reviewed',
+                })
+              } catch (e: unknown) {
+                // Satu kegagalan model tidak boleh membatalkan seluruh antrean.
+                hasil.push({
+                  assessment_id: tugas.a.id,
+                  company_name: tugas.c.name,
+                  status: e instanceof AiError ? `failed: ${e.message}` : 'failed',
+                })
+              }
+            }
+          },
+        )
+        await Promise.all(pekerja)
+
+        // Urutan hasil mengikuti selesainya pekerjaan; urutkan ulang agar
+        // tampilan stabil dan tidak berubah-ubah antar pemanggilan.
+        hasil.sort((x, y) => x.company_name.localeCompare(y.company_name))
         return { reviewed: hasil.filter((x) => x.status === 'reviewed').length, items: hasil }
       },
       {

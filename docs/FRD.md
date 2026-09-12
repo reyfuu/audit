@@ -166,6 +166,7 @@ Pertanyaan tidak visible dikeluarkan dari pembilang dan penyebut (tidak dihukum)
 - AC1: Hanya assessment milik auditor pemanggil yang diproses.
 - AC2: Assessment yang sudah pernah ditinjau dilewati kecuali diminta menyegarkan.
 - AC3: Kegagalan pada satu assessment tidak membatalkan sisa antrean.
+- AC4: Antrean dikerjakan beberapa sekaligus dengan konkurensi terbatas, sehingga auditor tidak menunggu menit-menit; urutan hasil tetap stabil antar pemanggilan.
 
 ## 9. Enum Terkendali
 `industry`: `manufacturing, retail_ecommerce, fnb, logistics, financial_services, healthcare, education, professional_services, construction_property, agriculture, media_creative, technology, government_public, other`

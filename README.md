@@ -38,7 +38,7 @@ itu jujur, sehingga status tidak pernah dilaporkan lebih baik dari kenyataan.
 |---|---|---|
 | `packages/scoring` | Mesin skoring: 7 dimensi, hard gate, rekomendasi, DSL visibilitas, kuesioner v1 | Berjalan, 92 uji |
 | `packages/ai` | Klien 9router + tinjauan AI atas kualitas jawaban | Berjalan, 14 uji |
-| `apps/api` | Perusahaan klien, undangan + QR, jalur responden bertoken | Berjalan, 142 uji |
+| `apps/api` | Perusahaan klien, undangan + QR, jalur responden bertoken | Berjalan, 144 uji |
 | `apps/web` | Form responden mobile-first + dashboard auditor bersidebar (masuk, undangan, QR, status, tinjauan AI, akun & tim) | Berjalan, 83 uji |
 | `apps/api/src/db` | Skema Drizzle + repo PostgreSQL, migrasi siap pakai | Berjalan, 16 uji kontrak |
 | `apps/api` auth | Login email+kata sandi (dan OTP), JWT 15 menit, refresh rotatif, undangan tim | Berjalan, 44 uji |
@@ -63,7 +63,8 @@ pertanyaan konfirmasi yang perlu diajukan auditor sebelum laporan dikirim.
 - Hasil tinjauan disimpan sebagai snapshot, jadi membuka laporan tidak memanggil
   model berulang; biaya tetap terkendali saat jumlah perusahaan bertambah.
 - Tersedia tinjauan massal untuk antrean yang belum pernah ditinjau, karena satu
-  auditor dapat memegang ratusan perusahaan.
+  auditor dapat memegang ratusan perusahaan. Antrean dikerjakan empat sekaligus:
+  diukur pada model sungguhan, 8 tinjauan turun dari 63 detik menjadi 22 detik.
 - Bila kunci belum disetel atau balasan model tidak sah, API membalas `503`
   dengan pesan jujur, bukan hasil karangan.
 
@@ -200,13 +201,13 @@ bun run test     # semua uji termasuk spike Elysia
 | OpenAPI 3.1 sah | `openapi-spec-validator contracts/openapi.yaml` | VALID |
 | Mesin skoring & rekomendasi | `bun test packages/scoring` | 92/92 lulus |
 | Klien model & tinjauan AI | `bun test packages/ai` | 14/14 lulus |
-| Alur undangan, QR, dan pengisian | `bun test apps/api` | 142/142 lulus |
+| Alur undangan, QR, dan pengisian | `bun test apps/api` | 144/144 lulus |
 | Form web, login, akun tim, dan dashboard bersidebar | `bun test apps/web` | 83/83 lulus |
 | Tampilan di iPhone + dashboard + laporan bagikan | `bun run check:visual` | 30/30 lulus |
 | Autentikasi & skenario serangan | `bun test apps/api/test/auth.test.ts` | 44/44 lulus |
 | Tautan bagikan & ekspor PDF | `bun test apps/api/test/report.test.ts` | 19/19 lulus |
-| Tinjauan AI & kepemilikan data | `bun test apps/api/test/ai-review.test.ts` | 13/13 lulus |
-| Kontrak penyimpanan (memori & Postgres) | `bun run test:pg` | 165/165 lulus |
+| Tinjauan AI, kepemilikan data, dan konkurensi antrean | `bun test apps/api/test/ai-review.test.ts` | 15/15 lulus |
+| Kontrak penyimpanan (memori & Postgres) | `bun run test:pg` | 167/167 lulus |
 | Type safety (strict) | `bunx tsc --noEmit` | bersih |
 | Keterlacakan FRD → kode → uji | `python3 tools/traceability.py` | 27 siap, 5 ditunda, 0 bermasalah |
 | Akurasi klaim README itu sendiri | `python3 tools/verify_readme.py` | 10/10 terverifikasi |

@@ -245,6 +245,75 @@ describe('FR-32 tinjauan massal', () => {
   })
 })
 
+describe('FR-32 antrean dikerjakan beberapa sekaligus', () => {
+  it('tidak menunggu satu per satu, sehingga antrean panjang tidak memakan menit', async () => {
+    // Model palsu yang lambat: bila dikerjakan berurutan, total waktunya
+    // sebanding dengan jumlah tugas. Konkurensi memangkasnya.
+    let berjalan = 0
+    let puncak = 0
+    const lambat: ChatClient = {
+      model: 'm',
+      async complete() {
+        berjalan += 1
+        puncak = Math.max(puncak, berjalan)
+        await new Promise((r) => setTimeout(r, 60))
+        berjalan -= 1
+        return BALASAN
+      },
+    }
+    const t = setup(lambat)
+    const s = await skenario(t)
+
+    // Beberapa assessment lain, semuanya siap ditinjau.
+    for (let i = 0; i < 5; i++) {
+      const c = await t.repo.createCompany({
+        owner_auditor_id: s.auditor.id, name: `PT Antre ${i}`,
+        industry: 'fnb', employee_band: '10_49', country: 'ID',
+      })
+      const a = await t.repo.createAssessment({
+        id: crypto.randomUUID(), company_id: c.id, status: 'SCORED',
+        questionnaire_version: '1.0.0', rubric_version: '1.0.0',
+        started_at: new Date().toISOString(), submitted_at: new Date().toISOString(),
+      })
+      a.score_snapshot = (await t.repo.getAssessment(s.assessmentId))!.score_snapshot
+      a.answers = (await t.repo.getAssessment(s.assessmentId))!.answers
+      await t.repo.saveAssessment(a)
+      await t.repo.createInvitation({
+        id: crypto.randomUUID(), company_id: c.id, assessment_id: a.id,
+        token_hash: `h${i}`, token_sealed: `s${i}`, status: 'SCORED',
+        issued_at: new Date().toISOString(), opened_at: null, submitted_at: null,
+        expires_at: new Date(Date.now() + 864e5).toISOString(), revoked_at: null,
+        reminder_count: 0,
+      })
+    }
+
+    const mulai = Date.now()
+    const res = await (await t.call('/ai-review/batch', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...t.asAuditor(s.auditor.id) },
+      body: JSON.stringify({ limit: 6 }),
+    })).json()
+    const durasi = Date.now() - mulai
+
+    expect(res.reviewed).toBe(6)
+    expect(puncak).toBeGreaterThan(1)
+    // Berurutan akan memakan >= 360ms; konkurensi harus jauh lebih cepat.
+    expect(durasi).toBeLessThan(300)
+  })
+
+  it('hasil diurutkan stabil walau selesainya tidak berurutan', async () => {
+    const t = setup(stubChat().client)
+    const s = await skenario(t)
+    const res = await (await t.call('/ai-review/batch', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...t.asAuditor(s.auditor.id) },
+      body: JSON.stringify({}),
+    })).json()
+    const nama = res.items.map((x: { company_name: string }) => x.company_name)
+    expect(nama).toEqual([...nama].sort())
+  })
+})
+
 describe('penyusunan masukan tinjauan', () => {
   it('menerjemahkan nilai jawaban menjadi teks yang dapat dibaca', () => {
     expect(answerText('APAPUN', { scale: 4 })).toBe('4 dari 5')
