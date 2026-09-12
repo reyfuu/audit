@@ -166,18 +166,20 @@ bun run test     # semua uji termasuk spike Elysia
 | Konsistensi dokumen & kontrak | `python3 tools/validate_docs.py` | 96/96 lulus |
 | OpenAPI 3.1 sah | `openapi-spec-validator contracts/openapi.yaml` | VALID |
 | Mesin skoring & rekomendasi | `bun test packages/scoring` | 92/92 lulus |
-| Alur undangan, QR, dan pengisian | `bun test apps/api` | 110/110 lulus |
+| Alur undangan, QR, dan pengisian | `bun test apps/api` | 113/113 lulus |
 | Form web & dashboard auditor | `bun test apps/web` | 49/49 lulus |
 | Tampilan di iPhone sungguhan | `bun run check:visual` | 17/17 lulus |
 | Autentikasi & skenario serangan | `bun test apps/api/test/auth.test.ts` | 32/32 lulus |
 | Tautan bagikan & ekspor PDF | `bun test apps/api/test/report.test.ts` | 19/19 lulus |
-| Kontrak penyimpanan (memori & Postgres) | `bun run test:pg` | 129/129 lulus |
+| Kontrak penyimpanan (memori & Postgres) | `bun run test:pg` | 132/132 lulus |
 | Type safety (strict) | `bunx tsc --noEmit` | bersih |
 | Keterlacakan FRD → kode → uji | `python3 tools/traceability.py` | 24 siap, 6 ditunda, 0 bermasalah |
 | Akurasi klaim README itu sendiri | `python3 tools/verify_readme.py` | 10/10 terverifikasi |
 
 Angka di tabel ini tidak ditulis tangan begitu saja: `tools/verify_readme.py`
 menjalankan perintahnya dan menolak bila README mengklaim lebih dari kenyataan.
+Penandaan `x-status` di kontrak juga ditegakkan uji yang benar-benar memanggil
+tiap endpoint, sehingga menandai sesuatu "sudah ada" padahal belum akan gagal.
 
 Suite kontrak penyimpanan dijalankan terhadap implementasi memori **dan**
 PostgreSQL nyata, sehingga keduanya dijamin berperilaku identik. Uji persistensi

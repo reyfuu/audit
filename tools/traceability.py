@@ -96,6 +96,12 @@ import yaml
 SPEC_DOC = yaml.safe_load(SPEC)
 
 def has_route(p: str) -> bool:
+    """Mencari penanda route di kode sumber.
+
+    Ini pemeriksaan statis. Bukti yang lebih kuat adalah uji otomatis yang
+    memanggil endpointnya; lihat apps/api/test/endpoints.test.ts yang
+    memverifikasi setiap path bertanda implemented benar-benar merespons.
+    """
     tail = p.split("/")[-1].split("{")[0].strip("/")
     if p == "/f/{token}":
         return "'/:token'" in SRC
