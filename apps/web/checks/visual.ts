@@ -257,6 +257,52 @@ await kodePage.close()
 
 await p4.goto(`${WEB_BASE}/app/undangan`, { waitUntil: 'networkidle' })
 
+/*
+ * Layar laptop dan monitor lebar.
+ *
+ * Dua ukuran paling lazim dipakai auditor: 1366x768 (laptop kantor) dan
+ * 1920x1080 (monitor). Yang diperiksa adalah keduanya memakai ruang dengan
+ * wajar, bukan menyisakan sepertiga layar kosong atau memaksa menggulir
+ * padahal tempatnya masih ada.
+ */
+for (const [w, h] of [[1366, 768], [1920, 1080]] as const) {
+  await p4.setViewportSize({ width: w, height: h })
+  await p4.goto(`${WEB_BASE}/app`, { waitUntil: 'networkidle' })
+  const m = await p4.evaluate(() => {
+    const inner = document.querySelector('.main .inner')!.getBoundingClientRect()
+    const lebarLayar = document.documentElement.clientWidth
+    const sisaKiri = inner.left - document.querySelector('.side')!.getBoundingClientRect().width
+    return {
+      isi: inner.width,
+      sisaKanan: lebarLayar - inner.right,
+      sisaKiri,
+      pakai: (inner.width + document.querySelector('.side')!.getBoundingClientRect().width)
+        / lebarLayar,
+    }
+  })
+  check(`Isi memakai ruang dengan wajar di ${w}x${h}`,
+    m.pakai >= 0.78, `terpakai ${Math.round(m.pakai * 100)}% lebar layar`)
+  check(`Isi terpusat, tidak menempel satu sisi di ${w}x${h}`,
+    Math.abs(m.sisaKanan - m.sisaKiri) <= 2,
+    `sisa kiri ${Math.round(m.sisaKiri)}px, kanan ${Math.round(m.sisaKanan)}px`)
+  await p4.screenshot({ path: `/tmp/siapai-13-${w}.png` })
+}
+
+// Layar pendek 1366x768: kartu statistik harus muat tanpa menggulir.
+await p4.setViewportSize({ width: 1366, height: 768 })
+await p4.goto(`${WEB_BASE}/app`, { waitUntil: 'networkidle' })
+const statBawah = await p4.evaluate(() =>
+  document.querySelector('.stats')!.getBoundingClientRect().bottom)
+check('Kartu statistik terlihat tanpa menggulir di 1366x768',
+  statBawah <= 768, `tepi bawah di ${Math.round(statBawah)}px`)
+
+const barisTerlihat = await p4.locator('.tbl tbody tr').evaluateAll((els) =>
+  els.filter((e) => e.getBoundingClientRect().bottom <= 768).length)
+check('Beberapa baris daftar langsung terlihat di layar pendek',
+  barisTerlihat >= 3, `${barisTerlihat} baris tampak tanpa menggulir`)
+
+await p4.setViewportSize({ width: 1280, height: 900 })
+
 // Tabel di ponsel: barisnya menjadi kartu, tanpa teks yang terpotong sempit.
 const hp = await browser.newContext({ ...devices['iPhone 13'] })
 await hp.addCookies(await desktop.cookies())
@@ -271,6 +317,9 @@ check('Daftar undangan di ponsel tidak scroll horizontal',
   await p6.evaluate(() => document.documentElement.scrollWidth) <= 391,
   `konten ${await p6.evaluate(() => document.documentElement.scrollWidth)}px`)
 await p6.close()
+
+// Kembali ke daftar undangan di laptop: pemeriksaan berikutnya menilai halaman itu.
+await p4.goto(`${WEB_BASE}/app/undangan`, { waitUntil: 'networkidle' })
 await p4.screenshot({ path: '/tmp/siapai-7-dashboard.png', fullPage: true })
 
 check('Dashboard menampilkan daftar undangan',

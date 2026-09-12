@@ -126,7 +126,28 @@ legend { font-size:18px; line-height:1.4; font-weight:600; margin-bottom:4px; pa
  * digulir, bukan menu tersembunyi, agar tidak ada aksi yang hilang.
  */
 export const APP_STYLES = `
-.tbl { width:100%; border-collapse:collapse; }
+/*
+ * Lebar kolom tabel.
+ *
+ * Pada layar lebar, kolom yang dibagi rata membuat isinya tercerai: nama
+ * perusahaan di kiri jauh, aksinya terlempar ke ujung kanan, dan mata harus
+ * menyeberangi ruang kosong untuk menghubungkan keduanya. Kolom sempit
+ * dipatok agar tetap berdekatan dengan datanya.
+ */
+.tbl { width:100%; border-collapse:collapse; table-layout:auto; }
+.tbl th:nth-child(2), .tbl td:nth-child(2) { width:150px; }
+.tbl th:nth-child(3), .tbl td:nth-child(3) { width:170px; }
+.tbl th:last-child, .tbl td:last-child { width:110px; text-align:right; }
+/* Tabel dua kolom (mis. daftar yang macet): kolom progres tetap di kanan. */
+.tbl td.kol-progres { width:180px; text-align:right; }
+@media (min-width:1200px) {
+  /*
+   * Kolom nama berhenti melebar pada layar lebar. Tanpa ini, nama perusahaan
+   * menempel di kiri sementara statusnya jauh di kanan, dan mata harus
+   * menyeberangi ruang kosong untuk memasangkan keduanya.
+   */
+  .tbl th:first-child, .tbl td:first-child { width:46%; }
+}
 .tbl th { text-align:left; font-size:13px; color:var(--muted); font-weight:600;
   padding:8px 6px; border-bottom:1px solid var(--border); }
 .tbl td { padding:12px 6px; border-bottom:1px solid var(--border); font-size:15px; vertical-align:top; }
@@ -173,13 +194,26 @@ export const APP_STYLES = `
 .side .who { padding:8px 12px; font-size:13px; color:var(--muted); word-break:break-all; }
 
 .main { flex:1; min-width:0; }
-.main .inner { max-width:1040px; padding:24px 24px 64px; margin:0; }
+/*
+ * Lebar isi.
+ *
+ * Sebelumnya isi dipatok 1040px dan menempel ke kiri, sehingga pada layar
+ * 1920px ada 640px ruang kosong menganggur di kanan dan halaman terasa
+ * timpang. Sekarang isinya dipusatkan (margin auto) dan boleh melebar sampai
+ * 1320px, tetapi tidak lebih: baris teks yang terlalu panjang justru
+ * melelahkan untuk dibaca.
+ */
+.main .inner { max-width:1320px; padding:24px 28px 64px; margin:0 auto; }
+@media (min-width:1600px) { .main .inner { padding:28px 40px 72px; } }
 .page-head { display:flex; align-items:flex-start; gap:16px; flex-wrap:wrap; margin-bottom:20px; }
 .page-head h1 { margin:0; font-size:26px; }
 .page-head .spacer { margin-left:auto; }
 
 .stats { display:grid; gap:12px; grid-template-columns:repeat(2,1fr); margin-bottom:20px; }
 @media (min-width:900px) { .stats { grid-template-columns:repeat(4,1fr); } }
+/* Kartu statistik berhenti melebar; angka yang berenang di kotak lebar
+   membuat hubungan angka dan labelnya sulit ditangkap sekilas. */
+@media (min-width:1400px) { .stats { grid-template-columns:repeat(4,minmax(0,300px)); } }
 .stat { background:var(--surface); border:1px solid var(--border);
   border-radius:var(--radius); padding:14px 16px; }
 .stat { display:flex; gap:12px; align-items:flex-start; }
@@ -211,6 +245,26 @@ label.lbl { display:block; font-size:13px; color:var(--muted); margin-bottom:4px
 .flag:first-of-type { border-top:0; }
 .flag .q { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px; color:var(--muted); }
 
+/*
+ * Layar pendek, khas laptop 1366x768.
+ *
+ * Tinggi viewport hanya 768px, dan sebagian terpakai bilah peramban. Jarak
+ * vertikal dirapatkan supaya kartu statistik dan awal daftar muat dalam satu
+ * layar, tanpa mengubah ukuran teks yang membuatnya sulit dibaca.
+ */
+@media (min-width:861px) and (max-height:820px) {
+  .main .inner { padding-top:18px; }
+  .page-head { margin-bottom:14px; }
+  .page-head h1 { font-size:23px; }
+  .stats { gap:10px; margin-bottom:14px; }
+  .stat { padding:11px 14px; }
+  .stat b { font-size:22px; }
+  .card { padding:16px 18px; margin-bottom:12px; }
+  .side { padding:14px 12px; }
+  .side .logo { padding-bottom:10px; }
+  .side a.nav { min-height:40px; }
+}
+
 /* Tautan kembali: ikon dan teks sebaris, target sentuh tetap memadai. */
 .tautan-balik { display:inline-flex; align-items:center; gap:6px; color:var(--brand-600);
   text-decoration:none; min-height:44px; }
@@ -230,6 +284,8 @@ label.lbl { display:block; font-size:13px; color:var(--muted); margin-bottom:4px
  */
 @media (max-width:720px) {
   .tbl, .tbl tbody, .tbl tr, .tbl td { display:block; width:100%; }
+  /* Lebar kolom tetap dibatalkan; di mode kartu tiap sel memakai satu baris. */
+  .tbl td:nth-child(2), .tbl td:nth-child(3), .tbl td:last-child { width:100%; text-align:left; }
   .tbl thead { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
   .tbl tr { border:1px solid var(--border); border-radius:var(--radius);
     padding:12px 14px; margin-bottom:10px; background:var(--surface); }

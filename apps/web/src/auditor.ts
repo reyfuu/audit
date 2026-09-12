@@ -100,10 +100,10 @@ ${macet.length ? `<div class="card">
   <table class="tbl"><tbody>
     ${macet.slice(0, 6).map((i) => `<tr>
       <td><a href="/app/undangan/${esc(i.id)}">${esc(i.company_name)}</a></td>
-      <td data-l="Progres" style="width:180px">
+      <td data-l="Progres" class="kol-progres">
         <span style="display:block">
           ${i.progress.answered}/${i.progress.total_visible} terjawab
-          <div class="progress" style="margin-top:6px;width:120px">
+          <div class="progress" style="margin-top:6px;width:120px;margin-left:auto">
             <i style="width:${i.progress.percent}%"></i>
           </div>
         </span>
