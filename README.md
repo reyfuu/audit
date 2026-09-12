@@ -29,12 +29,29 @@ Owner    ──pindai QR / klik tautan──────┘
 **Backend: Elysia di atas Bun** (TypeBox schema-first, Eden untuk tipe end-to-end), PostgreSQL 16 + Drizzle ORM, Redis/BullMQ untuk job PDF & email, `qrcode` untuk QR server-side.
 **Frontend:** Next.js 15 + Tailwind + shadcn/ui. Rincian di [docs/TRD.md](docs/TRD.md) §2 dan ADR-007/008 di [DESIGN.md](DESIGN.md).
 
-## Implementasi
+## Status Implementasi
+Kontrak API sengaja ditulis lebih dulu dan lebih luas daripada implementasinya.
+Tiap path diberi `x-status`, dan `tools/traceability.py` memverifikasi penandaan
+itu jujur, sehingga status tidak pernah dilaporkan lebih baik dari kenyataan.
+
 | Paket | Isi | Status |
 |---|---|---|
-| `packages/scoring` | Mesin skoring murni: 7 dimensi, hard gate, rekomendasi, DSL visibilitas, kuesioner v1 | Selesai, 90 uji |
-| `apps/api` | Elysia: perusahaan klien, undangan + QR, jalur responden bertoken | Selesai, 36 uji |
-| `apps/web` | Form mobile-first, satu pertanyaan per layar, halaman hasil | Selesai, 31 uji |
+| `packages/scoring` | Mesin skoring: 7 dimensi, hard gate, rekomendasi, DSL visibilitas, kuesioner v1 | Berjalan, 90 uji |
+| `apps/api` | Perusahaan klien, undangan + QR, jalur responden bertoken | Berjalan, 43 uji |
+| `apps/web` | Form mobile-first, satu pertanyaan per layar, halaman hasil | Berjalan, 31 uji |
+
+**Alur utama sudah utuh:** auditor menerbitkan undangan → QR/tautan → owner mengisi → skor dan rekomendasi keluar.
+
+**Yang masih berupa kontrak, belum ada kodenya (22 endpoint):**
+autentikasi auditor (FR-01..FR-04, saat ini memakai token pengembangan),
+hapus draft (FR-13), ekspor PDF (FR-17), tautan bagikan (FR-18),
+riwayat & tren (FR-19), CMS bank pertanyaan (FR-20..FR-22),
+dan benchmark industri sebagai endpoint tersendiri (FR-15 dasarnya sudah ada).
+Penyimpanan masih in-memory; Drizzle/Postgres (ADR-008) belum dipasang.
+
+```bash
+python3 tools/traceability.py   # peta FRD -> implementasi -> uji
+```
 
 ```bash
 bun run dev           # jalankan API + form, cetak tautan undangan & QR siap dicoba
@@ -81,10 +98,11 @@ bun run test     # semua uji termasuk spike Elysia
 | Konsistensi dokumen & kontrak | `python3 tools/validate_docs.py` | 96/96 lulus |
 | OpenAPI 3.1 sah | `openapi-spec-validator contracts/openapi.yaml` | VALID |
 | Mesin skoring & rekomendasi | `bun test packages/scoring` | 90/90 lulus |
-| Alur undangan, QR, dan pengisian | `bun test apps/api` | 36/36 lulus |
+| Alur undangan, QR, dan pengisian | `bun test apps/api` | 43/43 lulus |
 | Form web tanpa JavaScript | `bun test apps/web` | 31/31 lulus |
 | Tampilan di iPhone sungguhan | `bun run check:visual` | 17/17 lulus |
 | Type safety (strict) | `bunx tsc --noEmit` | bersih |
+| Keterlacakan FRD → kode → uji | `python3 tools/traceability.py` | 19 siap, 11 ditunda, 0 bermasalah |
 
 Pemeriksaan visual menjalankan Chromium pada viewport iPhone 13 dan mengukur hal yang tidak dapat dibuktikan uji string: target sentuh terhitung ≥ 44px, tidak ada scroll horizontal, kontras 17.7:1, dan form benar-benar selesai dengan 43 ketukan. Alur juga diuji ulang dengan `javaScriptEnabled: false`.
 

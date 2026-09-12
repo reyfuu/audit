@@ -42,6 +42,22 @@ async function issueInvitation(t: ReturnType<typeof setup>, companyId: string) {
   return { status: r.status, body: await r.json() }
 }
 
+/** Nilai untuk sebuah pertanyaan pada tingkat tertentu. */
+function valueFor(q: Question, pick: 'lowest' | 'highest') {
+  if (pick === 'highest') return bestValue(q)
+  switch (q.type) {
+    case 'single_choice': {
+      const s = [...(q.options ?? [])].sort((a, b) => a.score - b.score)
+      return { choice: s[0]!.code }
+    }
+    case 'multi_choice': return { choices: [] }
+    case 'scale_1_5': return { scale: 1 }
+    case 'boolean': return { bool: false }
+    case 'number': return { number: q.min ?? 0 }
+    default: return { text: '' }
+  }
+}
+
 /** Jawaban terbaik untuk seluruh pertanyaan yang sedang tampil. */
 function bestValue(q: Question) {
   switch (q.type) {
@@ -297,6 +313,103 @@ describe('FR-26 melanjutkan lintas perangkat', () => {
     const welcome = await (await t.call(`/f/${body.token}`)).json()
     expect(welcome.resume).toBe(true)
     expect(welcome.progress.answered).toBe(dijawab.length)
+  })
+})
+
+describe('FR-08 pengambilan seksi bertahap', () => {
+  it('AC1: hanya mengembalikan pertanyaan yang lolos aturan visibilitas', async () => {
+    const t = setup()
+    const c = await createCompany(t)
+    const { body } = await issueInvitation(t, c.id)
+
+    // Perusahaan kecil: PPL-07 tidak boleh muncul di seksi SDM.
+    await t.call(`/f/${body.token}/answers`, {
+      method: 'PATCH', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ answers: [{ question_code: 'ORG-02', value: { choice: '10_49' } }] }),
+    })
+    const kecil = await (await t.call(`/f/${body.token}/next?section=PPL`)).json()
+    expect(kecil.questions.map((q: Question) => q.code)).not.toContain('PPL-07')
+
+    // Perusahaan besar: PPL-07 muncul.
+    await t.call(`/f/${body.token}/answers`, {
+      method: 'PATCH', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ answers: [{ question_code: 'ORG-02', value: { choice: '1000_plus' } }] }),
+    })
+    const besar = await (await t.call(`/f/${body.token}/next?section=PPL`)).json()
+    expect(besar.questions.map((q: Question) => q.code)).toContain('PPL-07')
+  })
+
+  it('AC2: respons menyertakan progres yang konsisten', async () => {
+    const t = setup()
+    const c = await createCompany(t)
+    const { body } = await issueInvitation(t, c.id)
+    const s = await (await t.call(`/f/${body.token}/next`)).json()
+    expect(s.progress.answered).toBe(0)
+    expect(s.progress.total_visible).toBeGreaterThan(30)
+    expect(s.progress.percent).toBe(0)
+    expect(s.progress.estimated_minutes_left).toBeGreaterThan(0)
+  })
+
+  it('menunjuk seksi pertama yang belum lengkap, bukan selalu seksi pertama', async () => {
+    const t = setup()
+    const c = await createCompany(t)
+    const { body } = await issueInvitation(t, c.id)
+    const pertama = await (await t.call(`/f/${body.token}/next`)).json()
+
+    // Tuntaskan seluruh seksi pertama.
+    await t.call(`/f/${body.token}/answers`, {
+      method: 'PATCH', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        answers: pertama.questions.map((q: Question) => ({
+          question_code: q.code, value: valueFor(q, 'highest'),
+        })),
+      }),
+    })
+    const kedua = await (await t.call(`/f/${body.token}/next`)).json()
+    expect(kedua.dimension.code).not.toBe(pertama.dimension.code)
+    expect(kedua.section_index).toBeGreaterThan(pertama.section_index)
+  })
+
+  it('seksi yang diminta secara eksplisit dihormati', async () => {
+    const t = setup()
+    const c = await createCompany(t)
+    const { body } = await issueInvitation(t, c.id)
+    const s = await (await t.call(`/f/${body.token}/next?section=GOV`)).json()
+    expect(s.dimension.code).toBe('GOV')
+    expect(s.questions.every((q: Question) => q.dimension_code === 'GOV')).toBe(true)
+  })
+
+  it('seksi yang tidak ada mengembalikan 404', async () => {
+    const t = setup()
+    const c = await createCompany(t)
+    const { body } = await issueInvitation(t, c.id)
+    expect((await t.call(`/f/${body.token}/next?section=XXX`)).status).toBe(404)
+  })
+
+  it('jawaban tersimpan ikut dikembalikan agar UI bisa menampilkannya kembali', async () => {
+    const t = setup()
+    const c = await createCompany(t)
+    const { body } = await issueInvitation(t, c.id)
+    await t.call(`/f/${body.token}/answers`, {
+      method: 'PATCH', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ answers: [{ question_code: 'DAT-01', value: { choice: 'opt_75' } }] }),
+    })
+    const s = await (await t.call(`/f/${body.token}/next?section=DAT`)).json()
+    const a = s.answers.find((x: { question_code: string }) => x.question_code === 'DAT-01')
+    expect(a.value).toEqual({ choice: 'opt_75' })
+  })
+})
+
+describe('FR-15 benchmark', () => {
+  it('AC2: menandai benchmark tidak tersedia selama sampel belum cukup', async () => {
+    const t = setup()
+    const c = await createCompany(t)
+    const { body } = await issueInvitation(t, c.id)
+    await fillForm(t, body.token)
+    const hasil = await (await t.call(`/f/${body.token}/submit`, { method: 'POST' })).json()
+    // Jangan pernah menampilkan angka pembanding palsu.
+    expect(hasil.benchmark_available).toBe(false)
+    for (const d of hasil.dimensions) expect(d.benchmark_percentile).toBeNull()
   })
 })
 

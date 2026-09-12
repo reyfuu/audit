@@ -6,6 +6,12 @@ info:
     Kontrak API untuk aplikasi audit kesiapan AI bisnis (SiapAI).
     Sumber kebenaran tipe untuk frontend dan backend.
 
+    STATUS IMPLEMENTASI
+    Kontrak ini mendahului implementasi. Operasi yang belum tersedia di server
+    ditandai `x-status: planned` dan akan mengembalikan 501 bila dipanggil.
+    Yang bertanda `x-status: implemented` sudah berjalan dan teruji.
+    Jalankan `python3 tools/traceability.py` untuk melihat peta terkini.
+
     Model v2 berbasis undangan:
     - Auditor login dan menerbitkan undangan assessment untuk perusahaan klien.
     - Sistem menghasilkan tautan bertoken dan QR code.
@@ -41,6 +47,7 @@ security:
 paths:
   # ───────────────────────── Auth ─────────────────────────
   /auth/register:
+    x-status: planned
     post:
       tags: [Auth]
       summary: Daftar dengan email, kirim OTP
@@ -60,6 +67,7 @@ paths:
         '429': { $ref: '#/components/responses/RateLimited' }
 
   /auth/verify-otp:
+    x-status: planned
     post:
       tags: [Auth]
       summary: Verifikasi OTP dan terbitkan token
@@ -80,6 +88,7 @@ paths:
         '429': { $ref: '#/components/responses/RateLimited' }
 
   /auth/google:
+    x-status: planned
     post:
       tags: [Auth]
       summary: Login via Google OAuth2 id_token
@@ -94,6 +103,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
 
   /auth/refresh:
+    x-status: planned
     post:
       tags: [Auth]
       summary: Rotasi refresh token
@@ -108,12 +118,14 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
 
   /auth/logout:
+    x-status: planned
     post:
       tags: [Auth]
       summary: Cabut refresh token
       responses: { '204': { description: No Content } }
 
   /me:
+    x-status: planned
     get:
       tags: [Auth]
       summary: Profil user dan keanggotaan organisasi
@@ -123,6 +135,7 @@ paths:
 
   # ─────────────────────── Organizations ───────────────────────
   /companies:
+    x-status: implemented
     get:
       tags: [Companies]
       summary: Daftar organisasi milik user
@@ -141,6 +154,7 @@ paths:
         '422': { $ref: '#/components/responses/UnprocessableEntity' }
 
   /companies/{companyId}:
+    x-status: implemented
     parameters: [{ $ref: '#/components/parameters/CompanyIdPath' }]
     get:
       tags: [Companies]
@@ -160,6 +174,7 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
 
   /companies/{companyId}/members:
+    x-status: planned
     parameters: [{ $ref: '#/components/parameters/CompanyIdPath' }]
     get:
       tags: [Companies]
@@ -188,6 +203,7 @@ paths:
 
   # ─────────────────────── Questionnaire ───────────────────────
   /questionnaires/active:
+    x-status: planned
     get:
       tags: [Questionnaire]
       summary: Ambil kuesioner aktif (dimensi, pertanyaan, opsi, bobot)
@@ -198,6 +214,7 @@ paths:
 
   # ─────────────────────── Invitations (auditor) ───────────────────────
   /invitations:
+    x-status: implemented
     get:
       tags: [Invitations]
       summary: Daftar undangan milik auditor beserta statusnya (FR-29)
@@ -250,6 +267,7 @@ paths:
           content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
 
   /invitations/{invitationId}:
+    x-status: implemented
     parameters: [{ $ref: '#/components/parameters/InvitationIdPath' }]
     get:
       tags: [Invitations]
@@ -265,6 +283,7 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
 
   /invitations/{invitationId}/reissue:
+    x-status: implemented
     parameters: [{ $ref: '#/components/parameters/InvitationIdPath' }]
     post:
       tags: [Invitations]
@@ -274,6 +293,7 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
 
   /invitations/{invitationId}/qr.png:
+    x-status: implemented
     parameters:
       - { $ref: '#/components/parameters/InvitationIdPath' }
       - name: size
@@ -296,6 +316,7 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
 
   /invitations/{invitationId}/qr.svg:
+    x-status: implemented
     parameters: [{ $ref: '#/components/parameters/InvitationIdPath' }]
     get:
       tags: [Invitations]
@@ -310,6 +331,7 @@ paths:
 
   # ─────────────────── Respondent (token undangan, tanpa akun) ───────────────────
   /f/{token}:
+    x-status: implemented
     parameters: [{ $ref: '#/components/parameters/InvitationTokenPath' }]
     get:
       tags: [Respondent]
@@ -324,6 +346,7 @@ paths:
         '404': { $ref: '#/components/responses/InvitationInvalid' }
 
   /f/{token}/next:
+    x-status: implemented
     parameters: [{ $ref: '#/components/parameters/InvitationTokenPath' }]
     get:
       tags: [Respondent]
@@ -336,6 +359,7 @@ paths:
         '404': { $ref: '#/components/responses/InvitationInvalid' }
 
   /f/{token}/answers:
+    x-status: implemented
     parameters: [{ $ref: '#/components/parameters/InvitationTokenPath' }]
     patch:
       tags: [Respondent]
@@ -370,6 +394,7 @@ paths:
         '422': { $ref: '#/components/responses/UnprocessableEntity' }
 
   /f/{token}/review:
+    x-status: implemented
     parameters: [{ $ref: '#/components/parameters/InvitationTokenPath' }]
     get:
       tags: [Respondent]
@@ -389,6 +414,7 @@ paths:
         '404': { $ref: '#/components/responses/InvitationInvalid' }
 
   /f/{token}/submit:
+    x-status: implemented
     parameters: [{ $ref: '#/components/parameters/InvitationTokenPath' }]
     post:
       tags: [Respondent]
@@ -413,6 +439,7 @@ paths:
                       trace_id: 0f1c2d3e
 
   /f/{token}/result:
+    x-status: implemented
     parameters: [{ $ref: '#/components/parameters/InvitationTokenPath' }]
     get:
       tags: [Respondent]
@@ -433,6 +460,7 @@ paths:
 
   # ─────────────────────── Assessments (auditor) ───────────────────────
   /assessments:
+    x-status: planned
     get:
       tags: [Results]
       summary: Daftar assessment perusahaan
@@ -445,6 +473,7 @@ paths:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/AssessmentPage' } } } }
 
   /assessments/{assessmentId}:
+    x-status: planned
     parameters: [{ $ref: '#/components/parameters/AssessmentIdPath' }, { $ref: '#/components/parameters/CompanyIdHeader' }]
     get:
       tags: [Results]
@@ -455,6 +484,7 @@ paths:
 
   # ───────────────────────── Results ─────────────────────────
   /assessments/{assessmentId}/result:
+    x-status: planned
     parameters: [{ $ref: '#/components/parameters/AssessmentIdPath' }, { $ref: '#/components/parameters/CompanyIdHeader' }]
     get:
       tags: [Results]
@@ -464,6 +494,7 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
 
   /assessments/{assessmentId}/recommendations:
+    x-status: planned
     parameters: [{ $ref: '#/components/parameters/AssessmentIdPath' }, { $ref: '#/components/parameters/CompanyIdHeader' }]
     get:
       tags: [Results]
@@ -474,6 +505,7 @@ paths:
           content: { application/json: { schema: { $ref: '#/components/schemas/RecommendationBundle' } } }
 
   /companies/{companyId}/trend:
+    x-status: planned
     parameters: [{ $ref: '#/components/parameters/CompanyIdPath' }]
     get:
       tags: [Results]
@@ -485,6 +517,7 @@ paths:
 
   # ───────────────────────── Reports ─────────────────────────
   /assessments/{assessmentId}/report/pdf:
+    x-status: planned
     parameters: [{ $ref: '#/components/parameters/AssessmentIdPath' }, { $ref: '#/components/parameters/CompanyIdHeader' }]
     post:
       tags: [Reports]
@@ -493,6 +526,7 @@ paths:
         '202': { description: Antrean dibuat, content: { application/json: { schema: { $ref: '#/components/schemas/ReportJob' } } } }
 
   /reports/jobs/{jobId}:
+    x-status: planned
     parameters: [{ name: jobId, in: path, required: true, schema: { type: string, format: uuid } }]
     get:
       tags: [Reports]
@@ -501,6 +535,7 @@ paths:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/ReportJob' } } } }
 
   /assessments/{assessmentId}/share-links:
+    x-status: planned
     parameters: [{ $ref: '#/components/parameters/AssessmentIdPath' }, { $ref: '#/components/parameters/CompanyIdHeader' }]
     post:
       tags: [Reports]
@@ -517,6 +552,7 @@ paths:
         '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/ShareLink' } } } }
 
   /share-links/{token}:
+    x-status: planned
     parameters: [{ name: token, in: path, required: true, schema: { type: string } }]
     delete:
       tags: [Reports]
@@ -525,6 +561,7 @@ paths:
 
   # ─────────────────────── Benchmark ───────────────────────
   /benchmark:
+    x-status: planned
     get:
       tags: [Benchmark]
       summary: Statistik pembanding industri
@@ -536,6 +573,7 @@ paths:
 
   # ───────────────────────── Admin ─────────────────────────
   /admin/questionnaires:
+    x-status: planned
     get:
       tags: [Admin]
       summary: Daftar versi kuesioner
@@ -554,6 +592,7 @@ paths:
         '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/QuestionnaireVersion' } } } }
 
   /admin/questionnaires/{versionId}/publish:
+    x-status: planned
     parameters: [{ name: versionId, in: path, required: true, schema: { type: string } }]
     post:
       tags: [Admin]
@@ -563,6 +602,7 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
 
   /admin/questions:
+    x-status: planned
     post:
       tags: [Admin]
       summary: Tambah pertanyaan ke versi DRAFT
@@ -573,6 +613,7 @@ paths:
         '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Question' } } } }
 
   /admin/questions/{questionId}:
+    x-status: planned
     parameters: [{ name: questionId, in: path, required: true, schema: { type: string } }]
     patch:
       tags: [Admin]

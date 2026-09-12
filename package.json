@@ -11,11 +11,12 @@
     "typecheck": "tsc --noEmit",
     "validate:docs": "python3 tools/validate_docs.py",
     "demo": "bun packages/scoring/demo.ts",
-    "verify": "bun run typecheck && bun run validate:docs && bun test packages apps",
+    "verify": "bun run typecheck && bun run validate:docs && bun run trace && bun test packages apps",
     "test:api": "bun test apps/api",
     "dev": "bun tools/dev-server.ts",
     "check:visual": "bun tools/visual-check.ts",
-    "verify:full": "bun run verify && bun run check:visual"
+    "verify:full": "bun run verify && bun run check:visual",
+    "trace": "python3 tools/traceability.py"
   },
   "devDependencies": {
     "@types/pngjs": "^6.0.5",
